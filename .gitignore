@@ -147,3 +147,40 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python environment files
+*.env
+
+# Backend uploads
+backend/uploads/
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Python test/cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Coverage
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
