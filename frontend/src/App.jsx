@@ -1,18 +1,5 @@
-import { Route, Routes } from 'react-router-dom'
+import AppRouter from './routes/AppRouter.jsx'
 
-function App() {
-  return (
-    <Routes>
-      <Route
-        path="/"
-        element={
-          <main className="flex min-h-screen items-center justify-center bg-white text-slate-900">
-            <h1 className="text-2xl font-semibold">MeetNote</h1>
-          </main>
-        }
-      />
-    </Routes>
-  )
+export default function App() {
+  return <AppRouter />
 }
-
-export default App
