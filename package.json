@@ -1,0 +1,11 @@
+{
+  "name": "meetnote",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MeetNote - Google Meet recorder Chrome extension (Phase 1 MVP)",
+  "scripts": {
+    "check": "node scripts/check.mjs",
+    "build": "node scripts/check.mjs"
+  }
+}
