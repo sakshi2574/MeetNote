@@ -61,6 +61,10 @@ export const meetings = [
   },
 ]
 
+export function findMeeting(id) {
+  return meetings.find((meeting) => meeting.id === id) ?? null
+}
+
 export function filterMeetings(items, { query = '', filter = 'all' } = {}) {
   const normalized = query.trim().toLowerCase()
 
