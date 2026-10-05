@@ -20,6 +20,7 @@ class Meeting(Base):
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     platform: Mapped[str] = mapped_column(String(100), nullable=False, default="MeetNote Recorder")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="completed")
+    meeting_code: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     recording_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     key_points: Mapped[list | None] = mapped_column(JSON, nullable=True)

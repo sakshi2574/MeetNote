@@ -9,6 +9,7 @@ from app.routers.action_items import router as action_items_router
 from app.routers.auth import router as auth_router
 from app.routers.decisions import router as decisions_router
 from app.routers.meetings import router as meetings_router
+from app.routers.recordings import router as recordings_router
 from app.routers.transcripts import router as transcripts_router
 
 
@@ -24,6 +25,7 @@ app.include_router(meetings_router)
 app.include_router(transcripts_router)
 app.include_router(action_items_router)
 app.include_router(decisions_router)
+app.include_router(recordings_router)
 
 app.add_middleware(
     CORSMiddleware,

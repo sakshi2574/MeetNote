@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import settings
@@ -38,3 +38,25 @@ def init_db() -> None:
     import app.models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_sqlite_meeting_code_column()
+
+
+def _ensure_sqlite_meeting_code_column() -> None:
+    # create_all creates missing tables only. An existing meetings table needs
+    # the new column added in place so current SQLite databases keep working.
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    with engine.begin() as connection:
+        table = connection.execute(
+            text("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meetings'")
+        ).first()
+        if table is None:
+            return
+
+        columns = {row[1] for row in connection.execute(text("PRAGMA table_info(meetings)"))}
+        if "meeting_code" not in columns:
+            connection.execute(text("ALTER TABLE meetings ADD COLUMN meeting_code VARCHAR(64)"))
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_meetings_meeting_code ON meetings (meeting_code)")
+        )

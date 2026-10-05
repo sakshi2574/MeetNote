@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <title>MeetNote</title>
+  </head>
+  <body>
+    <header class="header">
+      <h1 class="title">MeetNote</h1>
+      <span class="pill" id="status-pill" data-status="idle">Idle</span>
+    </header>
+
+    <section class="detection">
+      <p class="detection-line" id="detection-text">Checking tab&hellip;</p>
+      <p class="detection-sub" id="detection-sub"></p>
+    </section>
+
+    <section class="timer-block">
+      <div class="timer" id="timer">00:00</div>
+      <div class="timer-label" id="timer-label">Not recording</div>
+    </section>
+
+    <section class="controls">
+      <button class="btn btn-primary" id="btn-start" type="button">Record</button>
+      <button class="btn" id="btn-pause" type="button" hidden>Pause</button>
+      <button class="btn" id="btn-resume" type="button" hidden>Resume</button>
+      <button class="btn btn-danger" id="btn-stop" type="button" hidden>Stop &amp; save</button>
+    </section>
+
+    <p class="message error" id="error" hidden></p>
+    <p class="message success" id="success" hidden></p>
+    <p class="message upload" id="upload" hidden></p>
+
+    <section class="connect">
+      <p class="connect-status" id="connect-status" data-connected="no">Not connected</p>
+      <details>
+        <summary>Connect to MeetNote</summary>
+        <label class="field">
+          <span>Paste JWT</span>
+          <input id="auth-token" type="password" autocomplete="off" spellcheck="false" />
+        </label>
+        <div class="connect-actions">
+          <button class="btn" id="btn-connect" type="button">Connect</button>
+          <button class="btn" id="btn-clear-token" type="button">Clear</button>
+        </div>
+        <p class="message error" id="auth-error" hidden></p>
+      </details>
+    </section>
+
+    <details class="settings">
+      <summary>Settings</summary>
+      <label class="field">
+        <span>File name prefix</span>
+        <input id="setting-prefix" type="text" maxlength="40" spellcheck="false" />
+      </label>
+      <label class="field">
+        <span>Audio quality</span>
+        <select id="setting-bitrate">
+          <option value="64000">64 kbps (small)</option>
+          <option value="128000">128 kbps (default)</option>
+          <option value="192000">192 kbps (high)</option>
+        </select>
+      </label>
+      <label class="field field-inline">
+        <input id="setting-audible" type="checkbox" />
+        <span>Keep hearing the meeting while recording</span>
+      </label>
+    </details>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
