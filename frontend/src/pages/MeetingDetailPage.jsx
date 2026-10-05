@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { getActionItems } from '../api/actionItems.js'
+import { getDecisions } from '../api/decisions.js'
 import { getMeeting } from '../api/meetings.js'
 import { getTranscript } from '../api/transcripts.js'
 import ActionItems from '../components/intelligence/ActionItems.jsx'
@@ -14,8 +16,13 @@ import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
 import Toast from '../components/ui/Toast.jsx'
-import { actionItems, decisions, meetingSummary } from '../data/meetingIntelligence.js'
-import { formatMeeting, formatTranscriptSegment } from '../lib/formatMeeting.js'
+import { meetingSummary } from '../data/meetingIntelligence.js'
+import {
+  formatActionItem,
+  formatDecision,
+  formatMeeting,
+  formatTranscriptSegment,
+} from '../lib/formatMeeting.js'
 
 const playbackMessage = 'Recording playback will be available when the recorder is connected.'
 
@@ -30,8 +37,12 @@ export default function MeetingDetailPage() {
   const loading = current == null
   const meeting = current?.meeting ?? null
   const segments = current?.segments ?? []
+  const actionItems = current?.actionItems ?? []
+  const decisions = current?.decisions ?? []
   const meetingError = current?.meetingError ?? ''
   const transcriptError = current?.transcriptError ?? ''
+  const actionItemsError = current?.actionItemsError ?? ''
+  const decisionsError = current?.decisionsError ?? ''
 
   useEffect(() => {
     let cancelled = false
@@ -40,19 +51,32 @@ export default function MeetingDetailPage() {
       .then((response) => {
         if (cancelled) return null
         const formattedMeeting = formatMeeting(response.data)
-        return getTranscript(id)
-          .then((transcriptResponse) => ({
-            meeting: formattedMeeting,
-            segments: transcriptResponse.data.map(formatTranscriptSegment),
-            meetingError: '',
-            transcriptError: '',
-          }))
-          .catch(() => ({
-            meeting: formattedMeeting,
-            segments: [],
-            meetingError: '',
-            transcriptError: 'Unable to load transcript',
-          }))
+        return Promise.all([
+          getTranscript(id)
+            .then((transcriptResponse) => ({
+              segments: transcriptResponse.data.map(formatTranscriptSegment),
+              transcriptError: '',
+            }))
+            .catch(() => ({ segments: [], transcriptError: 'Unable to load transcript' })),
+          getActionItems(id)
+            .then((actionResponse) => ({
+              actionItems: actionResponse.data.map(formatActionItem),
+              actionItemsError: '',
+            }))
+            .catch(() => ({ actionItems: [], actionItemsError: 'Unable to load action items' })),
+          getDecisions(id)
+            .then((decisionResponse) => ({
+              decisions: decisionResponse.data.map(formatDecision),
+              decisionsError: '',
+            }))
+            .catch(() => ({ decisions: [], decisionsError: 'Unable to load decisions' })),
+        ]).then(([transcript, actions, decisionList]) => ({
+          meeting: formattedMeeting,
+          meetingError: '',
+          ...transcript,
+          ...actions,
+          ...decisionList,
+        }))
       })
       .then((payload) => {
         if (cancelled || !payload) return
@@ -64,8 +88,12 @@ export default function MeetingDetailPage() {
           id,
           meeting: null,
           segments: [],
+          actionItems: [],
+          decisions: [],
           meetingError: error.response?.status === 404 ? 'not-found' : 'Unable to load meeting',
           transcriptError: '',
+          actionItemsError: '',
+          decisionsError: '',
         })
       })
 
@@ -140,8 +168,24 @@ export default function MeetingDetailPage() {
               <TranscriptView segments={segments} />
             ) : null}
             {activeTab === 'summary' ? <Summary summary={meetingSummary} /> : null}
-            {activeTab === 'actions' ? <ActionItems items={actionItems} /> : null}
-            {activeTab === 'decisions' ? <Decisions decisions={decisions} /> : null}
+            {activeTab === 'actions' && actionItemsError ? (
+              <p className="text-sm text-slate-600">{actionItemsError}</p>
+            ) : null}
+            {activeTab === 'actions' && !actionItemsError && actionItems.length === 0 ? (
+              <p className="text-sm text-slate-600">No action items yet.</p>
+            ) : null}
+            {activeTab === 'actions' && !actionItemsError && actionItems.length > 0 ? (
+              <ActionItems items={actionItems} />
+            ) : null}
+            {activeTab === 'decisions' && decisionsError ? (
+              <p className="text-sm text-slate-600">{decisionsError}</p>
+            ) : null}
+            {activeTab === 'decisions' && !decisionsError && decisions.length === 0 ? (
+              <p className="text-sm text-slate-600">No decisions yet.</p>
+            ) : null}
+            {activeTab === 'decisions' && !decisionsError && decisions.length > 0 ? (
+              <Decisions decisions={decisions} />
+            ) : null}
           </Card>
         </div>
       </div>

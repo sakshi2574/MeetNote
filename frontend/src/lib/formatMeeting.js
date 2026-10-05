@@ -75,3 +75,33 @@ export function formatTranscriptSegment(segment) {
     text: segment.text,
   }
 }
+
+export function formatDueDate(value) {
+  if (!value) return null
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value))
+  if (!match) return null
+
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  if (Number.isNaN(date.getTime())) return null
+
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+}
+
+export function formatActionItem(item) {
+  return {
+    id: item.id,
+    task: item.task,
+    assignee: item.assignee?.trim() || 'Unassigned',
+    due: formatDueDate(item.due_date),
+    status: formatStatus(item.status || 'pending'),
+  }
+}
+
+export function formatDecision(decision) {
+  return {
+    id: decision.id,
+    text: decision.decision,
+    time: formatTranscriptTime(decision.timestamp),
+    context: decision.context ?? '',
+  }
+}
