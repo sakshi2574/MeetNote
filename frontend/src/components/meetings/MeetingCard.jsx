@@ -24,8 +24,12 @@ export default function MeetingCard({ meeting }) {
               <span>{meeting.date}</span>
               <span aria-hidden="true"> · </span>
               <span>{meeting.duration}</span>
-              <span aria-hidden="true"> · </span>
-              <span>{meeting.participants} participants</span>
+              {meeting.participants != null ? (
+                <>
+                  <span aria-hidden="true"> · </span>
+                  <span>{meeting.participants} participants</span>
+                </>
+              ) : null}
             </p>
             <p className="mt-2 text-sm leading-6 text-slate-600">{meeting.description}</p>
           </div>

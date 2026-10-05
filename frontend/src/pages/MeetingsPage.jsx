@@ -1,9 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { getMeetings } from '../api/meetings.js'
 import MeetingList from '../components/meetings/MeetingList.jsx'
 import Button from '../components/ui/Button.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
+import Spinner from '../components/ui/Spinner.jsx'
 import Toast from '../components/ui/Toast.jsx'
-import { filterMeetings, meetings } from '../data/meetings.js'
+import { filterMeetings } from '../data/meetings.js'
 import useStartMeetingNotice from '../hooks/useStartMeetingNotice.js'
+import { formatMeetings } from '../lib/formatMeeting.js'
 
 const filters = [
   { id: 'all', label: 'All' },
@@ -13,9 +17,31 @@ const filters = [
 
 export default function MeetingsPage() {
   const { notice, startMeeting, dismissNotice } = useStartMeetingNotice()
+  const [meetings, setMeetings] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
   const visibleMeetings = filterMeetings(meetings, { query, filter })
+
+  useEffect(() => {
+    let cancelled = false
+
+    getMeetings()
+      .then((response) => {
+        if (!cancelled) setMeetings(formatMeetings(response.data))
+      })
+      .catch(() => {
+        if (!cancelled) setError('Unable to load meetings')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   function clearSearch() {
     setQuery('')
@@ -63,7 +89,23 @@ export default function MeetingsPage() {
         </div>
       </div>
 
-      <MeetingList meetings={visibleMeetings} onClearSearch={clearSearch} />
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <Spinner label="Loading meetings" />
+        </div>
+      ) : null}
+
+      {!loading && error ? (
+        <EmptyState title={error} description="Check that the MeetNote API is running, then refresh this page." />
+      ) : null}
+
+      {!loading && !error && meetings.length === 0 ? (
+        <EmptyState title="No meetings yet" description="Meetings you record will show up here." />
+      ) : null}
+
+      {!loading && !error && meetings.length > 0 ? (
+        <MeetingList meetings={visibleMeetings} onClearSearch={clearSearch} />
+      ) : null}
 
       {notice ? <Toast key={notice.id} message={notice.message} onClose={dismissNotice} /> : null}
     </div>

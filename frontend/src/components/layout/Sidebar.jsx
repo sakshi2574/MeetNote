@@ -1,9 +1,10 @@
 import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../auth/AuthContext.jsx'
+import { primaryNav } from '../../routes/navigation.js'
 import Badge from '../ui/Badge.jsx'
 import Button from '../ui/Button.jsx'
 import Logo from './Logo.jsx'
 import UserProfile from './UserProfile.jsx'
-import { primaryNav } from '../../routes/navigation.js'
 
 const icons = {
   Dashboard: IconDashboard,
@@ -14,8 +15,10 @@ const icons = {
 
 export default function Sidebar({ open, onClose }) {
   const navigate = useNavigate()
+  const { logout } = useAuth()
 
   function handleLogout() {
+    logout()
     onClose()
     navigate('/login')
   }

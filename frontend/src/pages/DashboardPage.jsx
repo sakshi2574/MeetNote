@@ -1,22 +1,51 @@
+import { useEffect, useState } from 'react'
+import { getMeetings } from '../api/meetings.js'
+import { useAuth } from '../auth/AuthContext.jsx'
 import QuickAction from '../components/dashboard/QuickAction.jsx'
 import RecentMeetings from '../components/dashboard/RecentMeetings.jsx'
 import StatCard from '../components/dashboard/StatCard.jsx'
 import Button from '../components/ui/Button.jsx'
+import EmptyState from '../components/ui/EmptyState.jsx'
 import Toast from '../components/ui/Toast.jsx'
 import { dashboardStats } from '../data/dashboard.js'
-import { filterMeetings, meetings } from '../data/meetings.js'
+import { filterMeetings } from '../data/meetings.js'
 import useStartMeetingNotice from '../hooks/useStartMeetingNotice.js'
+import { formatMeetings } from '../lib/formatMeeting.js'
 
 export default function DashboardPage() {
+  const { user } = useAuth()
   const { notice, startMeeting, dismissNotice } = useStartMeetingNotice()
+  const [meetings, setMeetings] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const recentMeetings = filterMeetings(meetings, { filter: 'recent' })
+  const welcomeName = user?.name?.trim() || 'there'
+
+  useEffect(() => {
+    let cancelled = false
+
+    getMeetings()
+      .then((response) => {
+        if (!cancelled) setMeetings(formatMeetings(response.data))
+      })
+      .catch(() => {
+        if (!cancelled) setError('Unable to load meetings')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   return (
     <div className="space-y-6">
       <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Welcome back, Sakshi 👋
+            Welcome back, {welcomeName} 👋
           </h2>
           <p className="mt-1 text-sm text-slate-500">Here's what's happening with your meetings.</p>
         </div>
@@ -40,7 +69,11 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-3">
         <div className="xl:col-span-2">
-          <RecentMeetings meetings={recentMeetings} />
+          {error ? (
+            <EmptyState title={error} description="Check that the MeetNote API is running, then refresh this page." />
+          ) : (
+            <RecentMeetings meetings={recentMeetings} loading={loading} />
+          )}
         </div>
         <QuickAction onStart={startMeeting} />
       </div>

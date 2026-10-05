@@ -22,8 +22,12 @@ export default function MeetingDetailHeader({ meeting, onPlay }) {
             <span>{meeting.date}</span>
             <span aria-hidden="true"> · </span>
             <span>{meeting.duration}</span>
-            <span aria-hidden="true"> · </span>
-            <span>{meeting.participants} participants</span>
+            {meeting.participants != null ? (
+              <>
+                <span aria-hidden="true"> · </span>
+                <span>{meeting.participants} participants</span>
+              </>
+            ) : null}
           </p>
         </div>
         <Button className="w-full sm:w-auto" onClick={onPlay}>

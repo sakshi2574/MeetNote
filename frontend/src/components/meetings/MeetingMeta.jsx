@@ -6,9 +6,11 @@ export default function MeetingMeta({ meeting, platform }) {
   const rows = [
     { label: 'Date', value: meeting.date },
     { label: 'Duration', value: meeting.duration },
-    { label: 'Participants', value: String(meeting.participants) },
+    meeting.participants != null
+      ? { label: 'Participants', value: String(meeting.participants) }
+      : null,
     { label: 'Platform', value: platform },
-  ]
+  ].filter(Boolean)
 
   return (
     <Card>
