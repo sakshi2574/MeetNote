@@ -30,13 +30,18 @@ export function formatStatus(status) {
 
 export function formatMeeting(meeting) {
   const timestamp = Date.parse(meeting.meeting_date)
+  const durationSeconds = Number(meeting.duration_seconds)
+  const safeDuration = Number.isFinite(durationSeconds) ? Math.max(0, durationSeconds) : 0
+  const recordingPath = typeof meeting.recording_path === 'string' ? meeting.recording_path.trim() : ''
 
   return {
     id: meeting.id,
     title: meeting.title,
     description: meeting.description ?? '',
     date: formatMeetingDate(meeting.meeting_date),
-    duration: formatDuration(meeting.duration_seconds),
+    duration: formatDuration(safeDuration),
+    durationSeconds: safeDuration,
+    hasRecording: recordingPath !== '',
     status: formatStatus(meeting.status),
     platform: meeting.platform || '',
     meetingTimestamp: Number.isNaN(timestamp) ? 0 : timestamp,

@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
 from app.db.database import get_db
 from app.models.user import User
 from app.schemas.recording import RecordingUploadResponse
+from app.services.meeting_service import get_user_meeting
 from app.services.recording_service import (
     MAX_UPLOAD_BYTES,
     ensure_recordings_dir,
@@ -12,6 +14,7 @@ from app.services.recording_service import (
     normalize_meeting_code,
     recording_destination,
     recording_filename,
+    resolve_stored_recording,
     save_recording_meeting,
 )
 
@@ -83,4 +86,29 @@ async def upload_recording(
         filename=filename,
         duration_seconds=meeting.duration_seconds,
         status="uploaded",
+    )
+
+
+playback_router = APIRouter(tags=["recordings"])
+
+
+@playback_router.get("/meetings/{meeting_id}/recording")
+def read_meeting_recording(
+    meeting_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    meeting = get_user_meeting(db, current_user.id, meeting_id)
+    if meeting is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meeting not found")
+
+    recording_file = resolve_stored_recording(meeting.recording_path)
+    if recording_file is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording not found")
+
+    return FileResponse(
+        recording_file,
+        media_type="audio/webm",
+        filename=recording_file.name,
+        content_disposition_type="inline",
     )

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getActionItems } from '../api/actionItems.js'
 import { getDecisions } from '../api/decisions.js'
@@ -10,12 +10,12 @@ import Summary from '../components/intelligence/Summary.jsx'
 import MeetingDetailHeader from '../components/meetings/MeetingDetailHeader.jsx'
 import MeetingMeta from '../components/meetings/MeetingMeta.jsx'
 import MeetingTabs from '../components/meetings/MeetingTabs.jsx'
+import RecordingPlayer from '../components/meetings/RecordingPlayer.jsx'
 import TranscriptView from '../components/transcript/TranscriptView.jsx'
 import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
-import Toast from '../components/ui/Toast.jsx'
 import { meetingSummary } from '../data/meetingIntelligence.js'
 import {
   formatActionItem,
@@ -24,14 +24,12 @@ import {
   formatTranscriptSegment,
 } from '../lib/formatMeeting.js'
 
-const playbackMessage = 'Recording playback will be available when the recorder is connected.'
-
 export default function MeetingDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const recordingRef = useRef(null)
   const [result, setResult] = useState(null)
   const [tabState, setTabState] = useState({ id, tab: 'transcript' })
-  const [notice, setNotice] = useState(null)
   const activeTab = tabState.id === id ? tabState.tab : 'transcript'
   const current = result?.id === id ? result : null
   const loading = current == null
@@ -102,19 +100,12 @@ export default function MeetingDetailPage() {
     }
   }, [id])
 
-  useEffect(() => {
-    if (!notice) return undefined
-
-    const timer = window.setTimeout(() => setNotice(null), 4200)
-    return () => window.clearTimeout(timer)
-  }, [notice])
-
   function selectTab(tab) {
     setTabState({ id, tab })
   }
 
   function playRecording() {
-    setNotice({ id: Date.now(), message: playbackMessage })
+    recordingRef.current?.play()
   }
 
   if (loading) {
@@ -148,6 +139,13 @@ export default function MeetingDetailPage() {
   return (
     <div className="space-y-6">
       <MeetingDetailHeader meeting={meeting} onPlay={playRecording} />
+      <RecordingPlayer
+        key={id}
+        ref={recordingRef}
+        meetingId={id}
+        hasRecording={meeting.hasRecording}
+        durationSeconds={meeting.durationSeconds}
+      />
       <div className="grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
         <MeetingMeta meeting={meeting} platform={meeting.platform} />
         <div className="min-w-0">
@@ -189,7 +187,6 @@ export default function MeetingDetailPage() {
           </Card>
         </div>
       </div>
-      {notice ? <Toast key={notice.id} message={notice.message} onClose={() => setNotice(null)} /> : null}
     </div>
   )
 }

@@ -99,3 +99,40 @@ def _remove_replaced_recording(previous_path: str | None, relative_path: str) ->
         previous.unlink(missing_ok=True)
     except OSError:
         return
+
+
+def resolve_stored_recording(recording_path: str | None) -> Path | None:
+    # Upload stores "recordings/<filename>" relative to backend/uploads.
+    # The client never supplies a filesystem path; only a file inside RECORDINGS_DIR is returned.
+    if not isinstance(recording_path, str):
+        return None
+
+    raw = recording_path.strip()
+    if not raw:
+        return None
+
+    try:
+        candidate = Path(raw)
+    except (TypeError, ValueError):
+        return None
+
+    if candidate.is_absolute() or candidate.anchor:
+        return None
+    if any(part == ".." for part in candidate.parts):
+        return None
+
+    relative_parts = candidate.parts
+    if relative_parts[0] == "recordings":
+        relative_parts = relative_parts[1:]
+    if not relative_parts:
+        return None
+
+    root = RECORDINGS_DIR.resolve()
+    try:
+        resolved = root.joinpath(*relative_parts).resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+
+    if not resolved.is_relative_to(root) or not resolved.is_file():
+        return None
+    return resolved

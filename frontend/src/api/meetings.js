@@ -8,6 +8,13 @@ export function getMeeting(id) {
   return client.get(`/meetings/${id}`)
 }
 
+export function getMeetingRecording(id, config = {}) {
+  return client.get(`/meetings/${id}/recording`, {
+    ...config,
+    responseType: 'blob',
+  })
+}
+
 export function createMeeting(data) {
   return client.post('/meetings', data)
 }
