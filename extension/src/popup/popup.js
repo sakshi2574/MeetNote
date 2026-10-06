@@ -112,7 +112,7 @@ function renderTimer() {
   el.timer.textContent = formatDuration(elapsedMs(state));
   el.timerLabel.textContent =
     state.status === STATUS.RECORDING
-      ? 'Recording tab audio'
+      ? 'Recording tab and microphone'
       : state.status === STATUS.PAUSED
         ? 'Paused'
         : state.status === STATUS.STOPPING

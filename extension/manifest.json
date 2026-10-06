@@ -2,10 +2,11 @@
   "manifest_version": 3,
   "name": "MeetNote - Google Meet Recorder",
   "version": "0.1.0",
-  "description": "Record Google Meet tab audio locally and save it as a WebM file.",
+  "description": "Record Google Meet tab audio and the microphone together, then save the mix as a WebM file.",
   "minimum_chrome_version": "116",
   "permissions": [
     "activeTab",
+    "audioCapture",
     "downloads",
     "offscreen",
     "storage",

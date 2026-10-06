@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { getActionItems } from '../api/actionItems.js'
 import { getDecisions } from '../api/decisions.js'
 import { getMeeting } from '../api/meetings.js'
-import { getTranscript } from '../api/transcripts.js'
+import { getTranscript, transcribeMeeting } from '../api/transcripts.js'
 import ActionItems from '../components/intelligence/ActionItems.jsx'
 import Decisions from '../components/intelligence/Decisions.jsx'
 import Summary from '../components/intelligence/Summary.jsx'
@@ -16,6 +16,7 @@ import Button from '../components/ui/Button.jsx'
 import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
+import Toast from '../components/ui/Toast.jsx'
 import { meetingSummary } from '../data/meetingIntelligence.js'
 import {
   formatActionItem,
@@ -28,9 +29,15 @@ export default function MeetingDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const recordingRef = useRef(null)
+  const generatingMeetingIdRef = useRef(null)
+  const requestTokenRef = useRef(0)
   const [result, setResult] = useState(null)
   const [tabState, setTabState] = useState({ id, tab: 'transcript' })
+  const [generatingMeetingId, setGeneratingMeetingId] = useState(null)
+  const [notice, setNotice] = useState(null)
   const activeTab = tabState.id === id ? tabState.tab : 'transcript'
+  const generating = generatingMeetingId === id
+  const visibleNotice = notice?.meetingId === id ? notice : null
   const current = result?.id === id ? result : null
   const loading = current == null
   const meeting = current?.meeting ?? null
@@ -100,12 +107,101 @@ export default function MeetingDetailPage() {
     }
   }, [id])
 
+  useEffect(() => {
+    if (!notice) return undefined
+
+    const timer = window.setTimeout(() => setNotice(null), 4200)
+    return () => window.clearTimeout(timer)
+  }, [notice])
+
   function selectTab(tab) {
     setTabState({ id, tab })
   }
 
   function playRecording() {
     recordingRef.current?.play()
+  }
+
+  function dismissNotice() {
+    setNotice(null)
+  }
+
+  function generateTranscript() {
+    if (!meeting?.hasRecording) return
+
+    if (generatingMeetingIdRef.current != null) {
+      if (generatingMeetingIdRef.current !== id) {
+        setNotice({
+          id: Date.now(),
+          meetingId: id,
+          tone: 'error',
+          message: 'Transcription is already in progress.',
+        })
+      }
+      return
+    }
+
+    const meetingId = id
+    const token = requestTokenRef.current + 1
+    requestTokenRef.current = token
+    generatingMeetingIdRef.current = meetingId
+    setGeneratingMeetingId(meetingId)
+    setNotice(null)
+    setTabState({ id: meetingId, tab: 'transcript' })
+
+    const isCurrent = () =>
+      requestTokenRef.current === token && generatingMeetingIdRef.current === meetingId
+
+    const finish = (nextNotice) => {
+      if (!isCurrent()) return
+      generatingMeetingIdRef.current = null
+      setGeneratingMeetingId(null)
+      setNotice(nextNotice)
+    }
+
+    transcribeMeeting(meetingId)
+      .then((created) => {
+        const createdSegments = readTranscriptSegments(created.data)
+        return getTranscript(meetingId)
+          .then((loaded) => readTranscriptSegments(loaded.data) ?? createdSegments)
+          .catch(() => createdSegments)
+      })
+      .then((segments) => {
+        if (!isCurrent()) return
+        if (!segments) {
+          finish({
+            id: Date.now(),
+            meetingId,
+            tone: 'error',
+            message: 'Transcript was generated, but it could not be loaded.',
+          })
+          return
+        }
+
+        setResult((currentResult) => {
+          if (currentResult?.id !== meetingId) return currentResult
+          return {
+            ...currentResult,
+            segments: segments.map(formatTranscriptSegment),
+            transcriptError: '',
+          }
+        })
+        setTabState({ id: meetingId, tab: 'transcript' })
+        finish({
+          id: Date.now(),
+          meetingId,
+          tone: 'success',
+          message: 'Transcript generated.',
+        })
+      })
+      .catch((error) => {
+        finish({
+          id: Date.now(),
+          meetingId,
+          tone: 'error',
+          message: transcriptionErrorMessage(error),
+        })
+      })
   }
 
   if (loading) {
@@ -138,7 +234,12 @@ export default function MeetingDetailPage() {
 
   return (
     <div className="space-y-6">
-      <MeetingDetailHeader meeting={meeting} onPlay={playRecording} />
+      <MeetingDetailHeader
+        meeting={meeting}
+        onPlay={playRecording}
+        onGenerateTranscript={generateTranscript}
+        generatingTranscript={generating}
+      />
       <RecordingPlayer
         key={id}
         ref={recordingRef}
@@ -156,10 +257,16 @@ export default function MeetingDetailPage() {
             id={`meeting-panel-${activeTab}`}
             aria-labelledby={`meeting-tab-${activeTab}`}
           >
-            {activeTab === 'transcript' && transcriptError ? (
+            {activeTab === 'transcript' && generating ? (
+              <p className="mb-4 flex items-center gap-2 text-sm text-slate-600" role="status">
+                <Spinner label="Generating transcript" />
+                Generating transcript...
+              </p>
+            ) : null}
+            {activeTab === 'transcript' && transcriptError && !generating ? (
               <p className="text-sm text-slate-600">{transcriptError}</p>
             ) : null}
-            {activeTab === 'transcript' && !transcriptError && segments.length === 0 ? (
+            {activeTab === 'transcript' && !transcriptError && segments.length === 0 && !generating ? (
               <p className="text-sm text-slate-600">No transcript yet.</p>
             ) : null}
             {activeTab === 'transcript' && !transcriptError && segments.length > 0 ? (
@@ -187,6 +294,32 @@ export default function MeetingDetailPage() {
           </Card>
         </div>
       </div>
+      {visibleNotice ? (
+        <Toast
+          key={visibleNotice.id}
+          message={visibleNotice.message}
+          tone={visibleNotice.tone}
+          onClose={dismissNotice}
+        />
+      ) : null}
     </div>
   )
+}
+
+function readTranscriptSegments(data) {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.segments)) return data.segments
+  return null
+}
+
+function transcriptionErrorMessage(error) {
+  const status = error.response?.status
+  const detail = typeof error.response?.data?.detail === 'string' ? error.response.data.detail : ''
+  const inProgress = status === 409 || /already in progress/i.test(detail)
+
+  if (inProgress) return 'Transcription is already in progress.'
+  if (status === 404) return 'A recording is required before a transcript can be generated.'
+  if (status === 502) return 'Transcription failed. Please try again.'
+  if (status === 500) return 'The transcript could not be saved. Please try again.'
+  return 'Unable to generate the transcript. Please try again.'
 }

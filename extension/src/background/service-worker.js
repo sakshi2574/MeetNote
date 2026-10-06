@@ -38,7 +38,7 @@ async function ensureOffscreenDocument() {
   offscreenCreating = chrome.offscreen.createDocument({
     url: OFFSCREEN_PATH,
     reasons: ['USER_MEDIA'],
-    justification: 'Capture Google Meet tab audio and encode it with MediaRecorder.'
+    justification: 'Capture Google Meet tab audio and the microphone, mix them, and encode the result with MediaRecorder.'
   });
   try {
     await offscreenCreating;

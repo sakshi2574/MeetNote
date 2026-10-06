@@ -39,6 +39,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _ensure_sqlite_meeting_code_column()
+    _ensure_sqlite_transcript_source_column()
 
 
 def _ensure_sqlite_meeting_code_column() -> None:
@@ -60,3 +61,29 @@ def _ensure_sqlite_meeting_code_column() -> None:
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_meetings_meeting_code ON meetings (meeting_code)")
         )
+
+
+def _ensure_sqlite_transcript_source_column() -> None:
+    # Existing transcript rows were created by hand, so they default to manual.
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    with engine.begin() as connection:
+        table = connection.execute(
+            text(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transcript_segments'"
+            )
+        ).first()
+        if table is None:
+            return
+
+        columns = {
+            row[1] for row in connection.execute(text("PRAGMA table_info(transcript_segments)"))
+        }
+        if "source" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE transcript_segments "
+                    "ADD COLUMN source VARCHAR(32) NOT NULL DEFAULT 'manual'"
+                )
+            )

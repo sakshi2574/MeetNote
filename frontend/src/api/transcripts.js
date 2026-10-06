@@ -4,6 +4,10 @@ export function getTranscript(meetingId) {
   return client.get(`/meetings/${meetingId}/transcript`)
 }
 
+export function transcribeMeeting(meetingId) {
+  return client.post(`/meetings/${meetingId}/transcribe`)
+}
+
 export function createTranscriptSegment(meetingId, data) {
   return client.post(`/meetings/${meetingId}/transcript`, data)
 }

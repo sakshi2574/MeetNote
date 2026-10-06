@@ -6,6 +6,10 @@ const TIMESLICE_MS = 1000;
 
 /** @type {MediaStream | null} */
 let stream = null;
+/** @type {MediaStream | null} */
+let tabStream = null;
+/** @type {MediaStream | null} */
+let micStream = null;
 /** @type {MediaRecorder | null} */
 let recorder = null;
 /** @type {AudioContext | null} */
@@ -28,16 +32,34 @@ function notifyBackground(type, payload = {}) {
   chrome.runtime.sendMessage({ type, target: TARGET.BACKGROUND, ...payload }).catch(() => {});
 }
 
+function stopTracks(mediaStream) {
+  if (!mediaStream) return;
+  for (const track of mediaStream.getTracks()) track.stop();
+}
+
 function teardown() {
   if (audioContext) {
     audioContext.close().catch(() => {});
     audioContext = null;
   }
-  if (stream) {
-    for (const track of stream.getTracks()) track.stop();
-    stream = null;
-  }
+  stopTracks(stream);
+  stopTracks(tabStream);
+  stopTracks(micStream);
+  stream = null;
+  tabStream = null;
+  micStream = null;
   recorder = null;
+}
+
+function microphoneErrorMessage(error) {
+  const name = error && typeof error === 'object' ? error.name : '';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+    return 'Microphone access was denied. Allow the microphone for MeetNote, then try recording again.';
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || name === 'OverconstrainedError') {
+    return 'No microphone was found. Connect a microphone, then try recording again.';
+  }
+  return 'The microphone could not be captured.';
 }
 
 /**
@@ -53,7 +75,7 @@ async function start(streamId, audioBitsPerSecond, keepTabAudible) {
   stopping = false;
   mimeType = pickMimeType();
 
-  stream = await navigator.mediaDevices.getUserMedia({
+  tabStream = await navigator.mediaDevices.getUserMedia({
     audio: {
       mandatory: {
         chromeMediaSource: 'tab',
@@ -62,17 +84,41 @@ async function start(streamId, audioBitsPerSecond, keepTabAudible) {
     },
     video: false
   });
+  stream = tabStream;
 
-  const [track] = stream.getAudioTracks();
+  const [track] = tabStream.getAudioTracks();
   if (!track) {
     teardown();
     throw new Error('The Meet tab produced no audio track.');
   }
 
-  // tabCapture swallows the tab's audio; pipe it back so the user keeps hearing the call.
-  if (keepTabAudible) {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (error) {
+    teardown();
+    throw new Error(microphoneErrorMessage(error));
+  }
+  if (micStream.getAudioTracks().length === 0) {
+    teardown();
+    throw new Error('No microphone audio track was available.');
+  }
+
+  try {
     audioContext = new AudioContext();
-    audioContext.createMediaStreamSource(stream).connect(audioContext.destination);
+    if (audioContext.state === 'suspended') await audioContext.resume();
+
+    const mixed = audioContext.createMediaStreamDestination();
+    const tabSource = audioContext.createMediaStreamSource(tabStream);
+    const micSource = audioContext.createMediaStreamSource(micStream);
+    tabSource.connect(mixed);
+    micSource.connect(mixed);
+    // tabCapture mutes the tab. Play only the Meet audio back so the call stays audible
+    // and the microphone is not sent to the speakers.
+    if (keepTabAudible) tabSource.connect(audioContext.destination);
+    stream = mixed.stream;
+  } catch (error) {
+    teardown();
+    throw error;
   }
 
   track.addEventListener('ended', () => {

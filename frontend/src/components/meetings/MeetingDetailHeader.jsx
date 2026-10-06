@@ -2,7 +2,12 @@ import { useNavigate } from 'react-router-dom'
 import Badge from '../ui/Badge.jsx'
 import Button from '../ui/Button.jsx'
 
-export default function MeetingDetailHeader({ meeting, onPlay }) {
+export default function MeetingDetailHeader({
+  meeting,
+  onPlay,
+  onGenerateTranscript,
+  generatingTranscript = false,
+}) {
   const navigate = useNavigate()
   const tone = meeting.status === 'Completed' ? 'success' : 'neutral'
 
@@ -30,10 +35,23 @@ export default function MeetingDetailHeader({ meeting, onPlay }) {
             ) : null}
           </p>
         </div>
-        <Button className="w-full sm:w-auto" onClick={onPlay}>
-          <PlayIcon />
-          Play Recording
-        </Button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          {meeting.hasRecording ? (
+            <Button
+              variant="secondary"
+              className="w-full sm:w-auto"
+              loading={generatingTranscript}
+              aria-busy={generatingTranscript}
+              onClick={onGenerateTranscript}
+            >
+              {generatingTranscript ? 'Generating transcript...' : 'Generate Transcript'}
+            </Button>
+          ) : null}
+          <Button className="w-full sm:w-auto" onClick={onPlay}>
+            <PlayIcon />
+            Play Recording
+          </Button>
+        </div>
       </div>
     </header>
   )

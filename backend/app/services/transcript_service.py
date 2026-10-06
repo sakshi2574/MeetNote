@@ -1,10 +1,15 @@
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.meeting import Meeting
 from app.models.transcript_segment import TranscriptSegment
 from app.schemas.transcript import TranscriptSegmentCreate, TranscriptSegmentUpdate
 from app.services.meeting_service import get_user_meeting
+
+MANUAL_TRANSCRIPT_SOURCE = "manual"
+GENERATED_TRANSCRIPT_SOURCE = "ai"
+GENERATED_TRANSCRIPT_SPEAKER = "Unknown"
 
 
 def create_transcript_segment(
@@ -17,7 +22,11 @@ def create_transcript_segment(
     if meeting is None:
         return None
 
-    segment = TranscriptSegment(meeting_id=meeting.id, **payload.model_dump())
+    segment = TranscriptSegment(
+        meeting_id=meeting.id,
+        source=MANUAL_TRANSCRIPT_SOURCE,
+        **payload.model_dump(),
+    )
     db.add(segment)
     db.commit()
     db.refresh(segment)
@@ -75,6 +84,44 @@ def update_transcript_segment(
 
     db.commit()
     db.refresh(segment)
+    return segment
+
+
+def replace_generated_transcript(
+    db: Session,
+    meeting: Meeting,
+    text: str,
+) -> TranscriptSegment:
+    cleaned = text.strip()
+    if not cleaned:
+        raise ValueError("Text cannot be empty")
+
+    duration = meeting.duration_seconds
+    end_time = float(duration) if isinstance(duration, (int, float)) and duration > 0 else 0.0
+    previous = db.scalars(
+        select(TranscriptSegment).where(
+            TranscriptSegment.meeting_id == meeting.id,
+            TranscriptSegment.source == GENERATED_TRANSCRIPT_SOURCE,
+        )
+    ).all()
+    for segment in previous:
+        db.delete(segment)
+
+    segment = TranscriptSegment(
+        meeting_id=meeting.id,
+        speaker=GENERATED_TRANSCRIPT_SPEAKER,
+        start_time=0.0,
+        end_time=end_time,
+        text=cleaned,
+        source=GENERATED_TRANSCRIPT_SOURCE,
+    )
+    db.add(segment)
+    try:
+        db.commit()
+        db.refresh(segment)
+    except SQLAlchemyError:
+        db.rollback()
+        raise
     return segment
 
 
