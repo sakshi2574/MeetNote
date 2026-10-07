@@ -2,7 +2,7 @@ import Button from '../ui/Button.jsx'
 import EmptyState from '../ui/EmptyState.jsx'
 import MeetingCard from './MeetingCard.jsx'
 
-export default function MeetingList({ meetings, onClearSearch }) {
+export default function MeetingList({ meetings, onClearSearch, onDeleteMeeting }) {
   if (meetings.length === 0) {
     return (
       <EmptyState
@@ -25,7 +25,7 @@ export default function MeetingList({ meetings, onClearSearch }) {
       <ul className="space-y-3">
         {meetings.map((meeting) => (
           <li key={meeting.id}>
-            <MeetingCard meeting={meeting} />
+            <MeetingCard meeting={meeting} onDelete={onDeleteMeeting} />
           </li>
         ))}
       </ul>

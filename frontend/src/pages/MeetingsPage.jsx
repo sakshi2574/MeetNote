@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
-import { getMeetings } from '../api/meetings.js'
+import { useEffect, useRef, useState } from 'react'
+import { deleteMeeting, getMeetings } from '../api/meetings.js'
 import MeetingList from '../components/meetings/MeetingList.jsx'
 import Button from '../components/ui/Button.jsx'
+import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
 import Toast from '../components/ui/Toast.jsx'
@@ -22,7 +23,12 @@ export default function MeetingsPage() {
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState('all')
+  const [meetingToDelete, setMeetingToDelete] = useState(null)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteNotice, setDeleteNotice] = useState(null)
+  const deletingRef = useRef(false)
   const visibleMeetings = filterMeetings(meetings, { query, filter })
+  const visibleNotice = deleteNotice ?? notice
 
   useEffect(() => {
     let cancelled = false
@@ -43,8 +49,58 @@ export default function MeetingsPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (!deleteNotice) return undefined
+
+    const timer = window.setTimeout(() => setDeleteNotice(null), 4200)
+    return () => window.clearTimeout(timer)
+  }, [deleteNotice])
+
   function clearSearch() {
     setQuery('')
+  }
+
+  function requestDelete(meeting) {
+    setMeetingToDelete(meeting)
+  }
+
+  function cancelDelete() {
+    if (deletingRef.current) return
+    setMeetingToDelete(null)
+  }
+
+  function showDeleteNotice(message, tone) {
+    dismissNotice()
+    setDeleteNotice({ id: Date.now(), message, tone })
+  }
+
+  function dismissVisibleNotice() {
+    if (deleteNotice) {
+      setDeleteNotice(null)
+      return
+    }
+    dismissNotice()
+  }
+
+  async function confirmDelete() {
+    if (!meetingToDelete || deletingRef.current) return
+
+    const meetingId = meetingToDelete.id
+    deletingRef.current = true
+    setDeleting(true)
+
+    try {
+      await deleteMeeting(meetingId)
+      setMeetings((current) => current.filter((meeting) => meeting.id !== meetingId))
+      setMeetingToDelete(null)
+      showDeleteNotice('Meeting deleted.', 'success')
+    } catch {
+      setMeetingToDelete(null)
+      showDeleteNotice('Unable to delete this meeting.', 'error')
+    } finally {
+      deletingRef.current = false
+      setDeleting(false)
+    }
   }
 
   return (
@@ -104,10 +160,31 @@ export default function MeetingsPage() {
       ) : null}
 
       {!loading && !error && meetings.length > 0 ? (
-        <MeetingList meetings={visibleMeetings} onClearSearch={clearSearch} />
+        <MeetingList
+          meetings={visibleMeetings}
+          onClearSearch={clearSearch}
+          onDeleteMeeting={requestDelete}
+        />
       ) : null}
 
-      {notice ? <Toast key={notice.id} message={notice.message} onClose={dismissNotice} /> : null}
+      {meetingToDelete ? (
+        <ConfirmDialog
+          title="Delete this meeting?"
+          description="The meeting, transcript, action items, decisions, and recording association will be removed."
+          confirming={deleting}
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
+        />
+      ) : null}
+
+      {visibleNotice ? (
+        <Toast
+          key={visibleNotice.id}
+          message={visibleNotice.message}
+          tone={visibleNotice.tone}
+          onClose={dismissVisibleNotice}
+        />
+      ) : null}
     </div>
   )
 }

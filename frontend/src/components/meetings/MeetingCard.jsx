@@ -4,7 +4,7 @@ import Button from '../ui/Button.jsx'
 import Card from '../ui/Card.jsx'
 import MeetingIcon from './MeetingIcon.jsx'
 
-export default function MeetingCard({ meeting }) {
+export default function MeetingCard({ meeting, onDelete }) {
   const navigate = useNavigate()
   const tone = meeting.status === 'Completed' ? 'success' : 'neutral'
 
@@ -34,14 +34,24 @@ export default function MeetingCard({ meeting }) {
             <p className="mt-2 text-sm leading-6 text-slate-600">{meeting.description}</p>
           </div>
         </div>
-        <Button
-          variant="secondary"
-          className="w-full shrink-0 sm:w-auto"
-          aria-label={`Open ${meeting.title}`}
-          onClick={() => navigate(`/meetings/${meeting.id}`)}
-        >
-          Open
-        </Button>
+        <div className="flex w-full shrink-0 gap-2 sm:w-auto">
+          <Button
+            variant="secondary"
+            className="flex-1 sm:flex-none"
+            aria-label={`Open ${meeting.title}`}
+            onClick={() => navigate(`/meetings/${meeting.id}`)}
+          >
+            Open
+          </Button>
+          <Button
+            variant="danger"
+            className="flex-1 sm:flex-none"
+            aria-label={`Delete ${meeting.title}`}
+            onClick={() => onDelete(meeting)}
+          >
+            Delete
+          </Button>
+        </div>
       </div>
     </Card>
   )
