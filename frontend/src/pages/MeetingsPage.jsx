@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { deleteMeeting, getMeetings } from '../api/meetings.js'
+import { deleteMeeting, getMeetings, updateMeeting } from '../api/meetings.js'
+import EditMeetingDialog from '../components/meetings/EditMeetingDialog.jsx'
 import MeetingList from '../components/meetings/MeetingList.jsx'
 import Button from '../components/ui/Button.jsx'
 import ConfirmDialog from '../components/ui/ConfirmDialog.jsx'
@@ -8,7 +9,7 @@ import Spinner from '../components/ui/Spinner.jsx'
 import Toast from '../components/ui/Toast.jsx'
 import { filterMeetings } from '../data/meetings.js'
 import useStartMeetingNotice from '../hooks/useStartMeetingNotice.js'
-import { formatMeetings } from '../lib/formatMeeting.js'
+import { formatMeeting, formatMeetings } from '../lib/formatMeeting.js'
 
 const filters = [
   { id: 'all', label: 'All' },
@@ -25,10 +26,14 @@ export default function MeetingsPage() {
   const [filter, setFilter] = useState('all')
   const [meetingToDelete, setMeetingToDelete] = useState(null)
   const [deleting, setDeleting] = useState(false)
-  const [deleteNotice, setDeleteNotice] = useState(null)
+  const [meetingToEdit, setMeetingToEdit] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+  const [feedback, setFeedback] = useState(null)
   const deletingRef = useRef(false)
+  const savingRef = useRef(false)
   const visibleMeetings = filterMeetings(meetings, { query, filter })
-  const visibleNotice = deleteNotice ?? notice
+  const visibleNotice = feedback ?? notice
 
   useEffect(() => {
     let cancelled = false
@@ -50,11 +55,11 @@ export default function MeetingsPage() {
   }, [])
 
   useEffect(() => {
-    if (!deleteNotice) return undefined
+    if (!feedback) return undefined
 
-    const timer = window.setTimeout(() => setDeleteNotice(null), 4200)
+    const timer = window.setTimeout(() => setFeedback(null), 4200)
     return () => window.clearTimeout(timer)
-  }, [deleteNotice])
+  }, [feedback])
 
   function clearSearch() {
     setQuery('')
@@ -69,17 +74,54 @@ export default function MeetingsPage() {
     setMeetingToDelete(null)
   }
 
-  function showDeleteNotice(message, tone) {
+  function showFeedback(message, tone) {
     dismissNotice()
-    setDeleteNotice({ id: Date.now(), message, tone })
+    setFeedback({ id: Date.now(), message, tone })
   }
 
   function dismissVisibleNotice() {
-    if (deleteNotice) {
-      setDeleteNotice(null)
+    if (feedback) {
+      setFeedback(null)
       return
     }
     dismissNotice()
+  }
+
+  function requestEdit(meeting) {
+    setEditError('')
+    setMeetingToEdit(meeting)
+  }
+
+  function cancelEdit() {
+    if (savingRef.current) return
+    setMeetingToEdit(null)
+    setEditError('')
+  }
+
+  async function saveEdit(values) {
+    if (!meetingToEdit || savingRef.current) return
+
+    const meetingId = meetingToEdit.id
+    savingRef.current = true
+    setSaving(true)
+    setEditError('')
+
+    try {
+      const response = await updateMeeting(meetingId, values)
+      const updated = formatMeeting(response.data)
+      setMeetings((current) =>
+        current.map((meeting) =>
+          meeting.id === meetingId ? { ...updated, recent: meeting.recent } : meeting,
+        ),
+      )
+      setMeetingToEdit(null)
+      showFeedback('Meeting updated successfully.', 'success')
+    } catch {
+      setEditError('Unable to update this meeting.')
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   async function confirmDelete() {
@@ -93,10 +135,10 @@ export default function MeetingsPage() {
       await deleteMeeting(meetingId)
       setMeetings((current) => current.filter((meeting) => meeting.id !== meetingId))
       setMeetingToDelete(null)
-      showDeleteNotice('Meeting deleted.', 'success')
+      showFeedback('Meeting deleted.', 'success')
     } catch {
       setMeetingToDelete(null)
-      showDeleteNotice('Unable to delete this meeting.', 'error')
+      showFeedback('Unable to delete this meeting.', 'error')
     } finally {
       deletingRef.current = false
       setDeleting(false)
@@ -163,7 +205,19 @@ export default function MeetingsPage() {
         <MeetingList
           meetings={visibleMeetings}
           onClearSearch={clearSearch}
+          onEditMeeting={requestEdit}
           onDeleteMeeting={requestDelete}
+        />
+      ) : null}
+
+      {meetingToEdit ? (
+        <EditMeetingDialog
+          key={meetingToEdit.id}
+          meeting={meetingToEdit}
+          saving={saving}
+          error={editError}
+          onSave={saveEdit}
+          onCancel={cancelEdit}
         />
       ) : null}
 

@@ -4,7 +4,7 @@ import Button from '../ui/Button.jsx'
 import Card from '../ui/Card.jsx'
 import MeetingIcon from './MeetingIcon.jsx'
 
-export default function MeetingCard({ meeting, onDelete }) {
+export default function MeetingCard({ meeting, onEdit, onDelete }) {
   const navigate = useNavigate()
   const tone = meeting.status === 'Completed' ? 'success' : 'neutral'
 
@@ -42,6 +42,14 @@ export default function MeetingCard({ meeting, onDelete }) {
             onClick={() => navigate(`/meetings/${meeting.id}`)}
           >
             Open
+          </Button>
+          <Button
+            variant="secondary"
+            className="flex-1 sm:flex-none"
+            aria-label={`Edit ${meeting.title}`}
+            onClick={() => onEdit(meeting)}
+          >
+            Edit
           </Button>
           <Button
             variant="danger"

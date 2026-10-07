@@ -4,6 +4,7 @@ import Button from '../ui/Button.jsx'
 
 export default function MeetingDetailHeader({
   meeting,
+  onEdit,
   onPlay,
   onGenerateTranscript,
   generatingTranscript = false,
@@ -34,8 +35,14 @@ export default function MeetingDetailHeader({
               </>
             ) : null}
           </p>
+          {meeting.description ? (
+            <p className="mt-2 text-sm leading-6 text-slate-600">{meeting.description}</p>
+          ) : null}
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Button variant="secondary" className="w-full sm:w-auto" onClick={onEdit}>
+            Edit
+          </Button>
           {meeting.hasRecording ? (
             <Button
               variant="secondary"

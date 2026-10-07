@@ -2,11 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getActionItems } from '../api/actionItems.js'
 import { getDecisions } from '../api/decisions.js'
-import { getMeeting } from '../api/meetings.js'
+import { getMeeting, updateMeeting } from '../api/meetings.js'
 import { getTranscript, transcribeMeeting } from '../api/transcripts.js'
 import ActionItems from '../components/intelligence/ActionItems.jsx'
 import Decisions from '../components/intelligence/Decisions.jsx'
 import Summary from '../components/intelligence/Summary.jsx'
+import EditMeetingDialog from '../components/meetings/EditMeetingDialog.jsx'
 import MeetingDetailHeader from '../components/meetings/MeetingDetailHeader.jsx'
 import MeetingMeta from '../components/meetings/MeetingMeta.jsx'
 import MeetingTabs from '../components/meetings/MeetingTabs.jsx'
@@ -31,13 +32,18 @@ export default function MeetingDetailPage() {
   const recordingRef = useRef(null)
   const generatingMeetingIdRef = useRef(null)
   const requestTokenRef = useRef(0)
+  const savingRef = useRef(false)
   const [result, setResult] = useState(null)
   const [tabState, setTabState] = useState({ id, tab: 'transcript' })
   const [generatingMeetingId, setGeneratingMeetingId] = useState(null)
   const [notice, setNotice] = useState(null)
+  const [editorMeetingId, setEditorMeetingId] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [editError, setEditError] = useState('')
   const activeTab = tabState.id === id ? tabState.tab : 'transcript'
   const generating = generatingMeetingId === id
   const visibleNotice = notice?.meetingId === id ? notice : null
+  const editing = editorMeetingId === id
   const current = result?.id === id ? result : null
   const loading = current == null
   const meeting = current?.meeting ?? null
@@ -124,6 +130,46 @@ export default function MeetingDetailPage() {
 
   function dismissNotice() {
     setNotice(null)
+  }
+
+  function openEdit() {
+    setEditError('')
+    setEditorMeetingId(id)
+  }
+
+  function cancelEdit() {
+    if (savingRef.current) return
+    setEditorMeetingId(null)
+    setEditError('')
+  }
+
+  async function saveEdit(values) {
+    if (savingRef.current) return
+
+    savingRef.current = true
+    setSaving(true)
+    setEditError('')
+
+    try {
+      const response = await updateMeeting(id, values)
+      const updated = formatMeeting(response.data)
+      setResult((current) => {
+        if (!current || current.id !== id) return current
+        return { ...current, meeting: updated }
+      })
+      setEditorMeetingId(null)
+      setNotice({
+        id: Date.now(),
+        meetingId: id,
+        tone: 'success',
+        message: 'Meeting updated successfully.',
+      })
+    } catch {
+      setEditError('Unable to update this meeting.')
+    } finally {
+      savingRef.current = false
+      setSaving(false)
+    }
   }
 
   function generateTranscript() {
@@ -236,6 +282,7 @@ export default function MeetingDetailPage() {
     <div className="space-y-6">
       <MeetingDetailHeader
         meeting={meeting}
+        onEdit={openEdit}
         onPlay={playRecording}
         onGenerateTranscript={generateTranscript}
         generatingTranscript={generating}
@@ -294,6 +341,15 @@ export default function MeetingDetailPage() {
           </Card>
         </div>
       </div>
+      {editing ? (
+        <EditMeetingDialog
+          meeting={meeting}
+          saving={saving}
+          error={editError}
+          onSave={saveEdit}
+          onCancel={cancelEdit}
+        />
+      ) : null}
       {visibleNotice ? (
         <Toast
           key={visibleNotice.id}
