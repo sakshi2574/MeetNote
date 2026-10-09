@@ -11,6 +11,7 @@ from app.routers.action_items import router as action_items_router
 from app.routers.intelligence import router as intelligence_router
 from app.routers.auth import router as auth_router
 from app.routers.decisions import router as decisions_router
+from app.routers.exports import router as exports_router
 from app.routers.meetings import router as meetings_router
 from app.routers.recordings import playback_router, router as recordings_router
 from app.routers.transcripts import router as transcripts_router
@@ -35,6 +36,7 @@ app.include_router(transcriptions_router)
 app.include_router(action_items_router)
 app.include_router(decisions_router)
 app.include_router(intelligence_router)
+app.include_router(exports_router)
 app.include_router(recordings_router)
 app.include_router(playback_router)
 
@@ -44,6 +46,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
 )
 
 

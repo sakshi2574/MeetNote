@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import Badge from '../ui/Badge.jsx'
 import Button from '../ui/Button.jsx'
 
-export default function MeetingDetailHeader({ meeting, onEdit, onPlay }) {
+export default function MeetingDetailHeader({ meeting, onEdit, onExport, onPlay }) {
   const navigate = useNavigate()
   const tone = meeting.status === 'Completed' ? 'success' : 'neutral'
 
@@ -37,6 +37,10 @@ export default function MeetingDetailHeader({ meeting, onEdit, onPlay }) {
           <Button variant="secondary" className="w-full sm:w-auto" onClick={onEdit}>
             Edit
           </Button>
+          <Button variant="secondary" className="w-full sm:w-auto" onClick={onExport}>
+            <DownloadIcon />
+            Export
+          </Button>
           <Button className="w-full sm:w-auto" onClick={onPlay}>
             <PlayIcon />
             Play Recording
@@ -51,6 +55,21 @@ function ArrowIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
       <path d="M15 6 9 12l6 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+function DownloadIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
+      <path
+        d="M12 4v11m0 0-4-4m4 4 4-4M5 19h14"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }

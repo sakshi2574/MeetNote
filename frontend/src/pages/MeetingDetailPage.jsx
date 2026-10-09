@@ -13,6 +13,7 @@ import ActionItems from '../components/intelligence/ActionItems.jsx'
 import Decisions from '../components/intelligence/Decisions.jsx'
 import Summary from '../components/intelligence/Summary.jsx'
 import EditMeetingDialog from '../components/meetings/EditMeetingDialog.jsx'
+import ExportMeetingDialog from '../components/meetings/ExportMeetingDialog.jsx'
 import MeetingDetailHeader from '../components/meetings/MeetingDetailHeader.jsx'
 import MeetingMeta from '../components/meetings/MeetingMeta.jsx'
 import MeetingTabs from '../components/meetings/MeetingTabs.jsx'
@@ -59,6 +60,7 @@ export default function MeetingDetailPage() {
   const [regeneratingId, setRegeneratingId] = useState(null)
   const [notice, setNotice] = useState(null)
   const [editorMeetingId, setEditorMeetingId] = useState(null)
+  const [exportMeetingId, setExportMeetingId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState('')
   const [playback, setPlayback] = useState({ id, time: 0 })
@@ -71,6 +73,7 @@ export default function MeetingDetailPage() {
   const regenerating = regeneratingId === id
   const visibleNotice = notice?.meetingId === id ? notice : null
   const editing = editorMeetingId === id
+  const exportOpen = exportMeetingId === id
   const current = result?.id === id ? result : null
   const loading = current == null
   const meeting = current?.meeting ?? null
@@ -384,6 +387,19 @@ export default function MeetingDetailPage() {
     setEditorMeetingId(id)
   }
 
+  function openExport() {
+    setExportMeetingId(id)
+  }
+
+  function closeExport() {
+    setExportMeetingId(null)
+  }
+
+  function finishExport(filename) {
+    setExportMeetingId(null)
+    setNotice({ id: Date.now(), meetingId: id, tone: 'success', message: `Export downloaded: ${filename}` })
+  }
+
   function cancelEdit() {
     if (savingRef.current) return
     setEditorMeetingId(null)
@@ -449,7 +465,7 @@ export default function MeetingDetailPage() {
 
   return (
     <div className="space-y-6">
-      <MeetingDetailHeader meeting={meeting} onEdit={openEdit} onPlay={playRecording} />
+      <MeetingDetailHeader meeting={meeting} onEdit={openEdit} onExport={openExport} onPlay={playRecording} />
       <RecordingPlayer
         key={id}
         ref={recordingRef}
@@ -543,6 +559,13 @@ export default function MeetingDetailPage() {
           error={editError}
           onSave={saveEdit}
           onCancel={cancelEdit}
+        />
+      ) : null}
+      {exportOpen ? (
+        <ExportMeetingDialog
+          meeting={{ id, title: meeting.title }}
+          onClose={closeExport}
+          onExported={finishExport}
         />
       ) : null}
       {visibleNotice ? (
