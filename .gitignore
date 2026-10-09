@@ -187,3 +187,4 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+backend/meetnote.db.bak-before-intelligence
