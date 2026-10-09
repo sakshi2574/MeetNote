@@ -8,6 +8,8 @@ import { DEFAULT_SETTINGS, STATUS, STORAGE_KEYS } from './constants.js';
  * @property {number | null} startedAt    Epoch ms of the current running segment.
  * @property {number} accumulatedMs       Duration of all completed segments.
  * @property {string | null} lastError
+ * @property {'idle' | 'requesting' | 'active'} presentation
+ * @property {string | null} presentationNotice
  * @property {{ filename: string, bytes: number, durationMs: number, at: number } | null} lastRecording
  * @property {{ status: string, detail: string | null } | null} upload
  */
@@ -20,6 +22,8 @@ export const IDLE_STATE = {
   startedAt: null,
   accumulatedMs: 0,
   lastError: null,
+  presentation: 'idle',
+  presentationNotice: null,
   lastRecording: null,
   upload: null
 };
@@ -27,7 +31,10 @@ export const IDLE_STATE = {
 /** @returns {Promise<RecordingState>} */
 export async function readState() {
   const stored = await chrome.storage.local.get(STORAGE_KEYS.STATE);
-  return { ...IDLE_STATE, ...(stored[STORAGE_KEYS.STATE] || {}) };
+  const next = { ...IDLE_STATE, ...(stored[STORAGE_KEYS.STATE] || {}) };
+  delete next.sharing;
+  delete next.shareNotice;
+  return next;
 }
 
 /**

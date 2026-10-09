@@ -73,11 +73,17 @@ export function formatTranscriptTime(seconds) {
 }
 
 export function formatTranscriptSegment(segment) {
+  const start = Number(segment.start_time)
+  const end = Number(segment.end_time)
+
   return {
     id: segment.id,
     time: formatTranscriptTime(segment.start_time),
+    startTime: Number.isFinite(start) ? Math.max(0, start) : 0,
+    endTime: Number.isFinite(end) ? Math.max(0, end) : 0,
     speaker: segment.speaker,
     text: segment.text,
+    source: typeof segment.source === 'string' ? segment.source : '',
   }
 }
 
@@ -93,20 +99,29 @@ export function formatDueDate(value) {
 }
 
 export function formatActionItem(item) {
+  const timestamp = Number(item.timestamp)
+  const hasTimestamp = item.timestamp != null && Number.isFinite(timestamp)
   return {
     id: item.id,
     task: item.task,
+    rawAssignee: item.assignee?.trim() || '',
     assignee: item.assignee?.trim() || 'Unassigned',
     due: formatDueDate(item.due_date),
     status: formatStatus(item.status || 'pending'),
+    timestamp: hasTimestamp ? Math.max(0, timestamp) : null,
+    time: hasTimestamp ? formatTranscriptTime(timestamp) : null,
+    source: typeof item.source === 'string' ? item.source : '',
   }
 }
 
 export function formatDecision(decision) {
+  const timestamp = Number(decision.timestamp)
   return {
     id: decision.id,
     text: decision.decision,
+    timestamp: Number.isFinite(timestamp) ? Math.max(0, timestamp) : 0,
     time: formatTranscriptTime(decision.timestamp),
     context: decision.context ?? '',
+    source: typeof decision.source === 'string' ? decision.source : '',
   }
 }

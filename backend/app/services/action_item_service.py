@@ -60,8 +60,12 @@ def update_action_item(
     if item is None:
         return None
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(item, field, value)
+    if updates:
+        # Edited items, including a status change, survive later extraction.
+        item.source = "manual"
 
     db.commit()
     db.refresh(item)

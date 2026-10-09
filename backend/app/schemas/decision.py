@@ -64,6 +64,7 @@ class DecisionResponse(BaseModel):
     decision: str
     timestamp: float
     context: str | None
+    source: str = "manual"
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

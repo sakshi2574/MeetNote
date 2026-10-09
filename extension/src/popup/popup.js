@@ -22,6 +22,7 @@ const el = {
   pause: document.getElementById('btn-pause'),
   resume: document.getElementById('btn-resume'),
   stop: document.getElementById('btn-stop'),
+  presentation: document.getElementById('presentation-notice'),
   error: document.getElementById('error'),
   success: document.getElementById('success'),
   upload: document.getElementById('upload'),
@@ -110,16 +111,27 @@ function renderDetection() {
 function renderTimer() {
   if (!state) return;
   el.timer.textContent = formatDuration(elapsedMs(state));
-  el.timerLabel.textContent =
-    state.status === STATUS.RECORDING
-      ? 'Recording tab and microphone'
-      : state.status === STATUS.PAUSED
-        ? 'Paused'
-        : state.status === STATUS.STOPPING
-          ? 'Saving file'
-          : state.status === STATUS.STARTING
-            ? 'Starting capture'
-            : 'Not recording';
+  el.timerLabel.textContent = timerLabel();
+}
+
+function timerLabel() {
+  if (!state) return 'Not recording';
+  if (state.status === STATUS.RECORDING) {
+    if (state.presentation === 'active') return 'Presentation capture active';
+    if (state.presentation === 'requesting') return 'Presentation detected';
+    return 'Recording';
+  }
+  if (state.status === STATUS.PAUSED) return 'Paused';
+  if (state.status === STATUS.STOPPING) return 'Saving file';
+  if (state.status === STATUS.STARTING) return 'Starting capture';
+  return 'Not recording';
+}
+
+function renderPresentation() {
+  if (!state) return;
+  const notice = isActive(state.status) ? state.presentationNotice : '';
+  el.presentation.hidden = !notice;
+  el.presentation.textContent = notice || '';
 }
 
 function renderControls() {
@@ -140,6 +152,7 @@ function renderControls() {
 
 function renderMessages() {
   if (!state) return;
+  renderPresentation();
   el.error.hidden = !state.lastError;
   el.error.textContent = state.lastError || '';
 

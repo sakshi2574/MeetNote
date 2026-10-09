@@ -1,19 +1,25 @@
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import MeetingIcon from '../meetings/MeetingIcon.jsx'
 import Badge from '../ui/Badge.jsx'
-import Button from '../ui/Button.jsx'
 import Card from '../ui/Card.jsx'
 import EmptyState from '../ui/EmptyState.jsx'
 import Spinner from '../ui/Spinner.jsx'
 
 export default function RecentMeetings({ meetings = [], loading = false }) {
-  const navigate = useNavigate()
-
   return (
     <Card aria-busy={loading}>
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-slate-900">Recent meetings</h2>
-        {loading ? <Spinner label="Loading meetings" /> : null}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <h2 className="text-base font-semibold text-slate-900">Recent meetings</h2>
+          {loading ? <Spinner label="Loading meetings" /> : null}
+        </div>
+        <Link
+          to="/meetings"
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+        >
+          View all
+          <span aria-hidden="true">→</span>
+        </Link>
       </div>
 
       {loading ? (
@@ -36,34 +42,19 @@ export default function RecentMeetings({ meetings = [], loading = false }) {
       {!loading && meetings.length > 0 ? (
         <ul className="mt-2 divide-y divide-slate-100">
           {meetings.map((meeting) => (
-            <li
-              key={meeting.id}
-              className="-mx-2 flex flex-col gap-3 rounded-lg px-2 py-4 transition-colors first:pt-3 last:pb-1 hover:bg-slate-50 sm:flex-row sm:items-center"
-            >
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
-                  <MeetingIcon />
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-900">{meeting.title}</p>
-                  <p className="mt-0.5 text-sm text-slate-500">
-                    <span>{meeting.date}</span>
-                    <span aria-hidden="true"> · </span>
-                    <span>{meeting.duration}</span>
-                  </p>
-                </div>
+            <li key={meeting.id} className="flex items-center gap-3 px-2 py-4 first:pt-3 last:pb-1">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+                <MeetingIcon />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-slate-900">{meeting.title}</p>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  <span>{meeting.date}</span>
+                  <span aria-hidden="true"> · </span>
+                  <span>{meeting.duration}</span>
+                </p>
               </div>
-              <div className="flex items-center justify-between gap-3 sm:justify-end">
-                <Badge tone="success">{meeting.status}</Badge>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  aria-label={`Open ${meeting.title}`}
-                  onClick={() => navigate(`/meetings/${meeting.id}`)}
-                >
-                  Open
-                </Button>
-              </div>
+              <Badge tone="success">{meeting.status}</Badge>
             </li>
           ))}
         </ul>

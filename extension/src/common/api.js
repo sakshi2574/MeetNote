@@ -65,7 +65,7 @@ export function normalizeDurationSeconds(durationSeconds) {
 function fileTypeForUpload(blobType) {
   const normalized = String(blobType || '').toLowerCase().replace(/\s/g, '').replace(/"/g, '');
   if (normalized === 'audio/webm' || normalized === 'audio/webm;codecs=opus') return normalized;
-  return 'audio/webm';
+  return 'video/webm';
 }
 
 /**

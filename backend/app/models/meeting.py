@@ -22,8 +22,16 @@ class Meeting(Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="completed")
     meeting_code: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     recording_path: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    transcription_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    transcription_language: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    transcription_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     key_points: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # "ai" when the summary came from transcript extraction, "manual" after a
+    # user edit. A summary with no source predates this field and is kept.
+    summary_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    intelligence_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    intelligence_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 

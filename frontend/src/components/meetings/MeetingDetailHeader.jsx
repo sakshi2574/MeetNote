@@ -2,13 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import Badge from '../ui/Badge.jsx'
 import Button from '../ui/Button.jsx'
 
-export default function MeetingDetailHeader({
-  meeting,
-  onEdit,
-  onPlay,
-  onGenerateTranscript,
-  generatingTranscript = false,
-}) {
+export default function MeetingDetailHeader({ meeting, onEdit, onPlay }) {
   const navigate = useNavigate()
   const tone = meeting.status === 'Completed' ? 'success' : 'neutral'
 
@@ -43,17 +37,6 @@ export default function MeetingDetailHeader({
           <Button variant="secondary" className="w-full sm:w-auto" onClick={onEdit}>
             Edit
           </Button>
-          {meeting.hasRecording ? (
-            <Button
-              variant="secondary"
-              className="w-full sm:w-auto"
-              loading={generatingTranscript}
-              aria-busy={generatingTranscript}
-              onClick={onGenerateTranscript}
-            >
-              {generatingTranscript ? 'Generating transcript...' : 'Generate Transcript'}
-            </Button>
-          ) : null}
           <Button className="w-full sm:w-auto" onClick={onPlay}>
             <PlayIcon />
             Play Recording

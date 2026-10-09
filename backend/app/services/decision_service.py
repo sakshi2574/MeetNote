@@ -62,8 +62,11 @@ def update_decision(
     if decision is None:
         return None
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(decision, field, value)
+    if updates:
+        decision.source = "manual"
 
     db.commit()
     db.refresh(decision)

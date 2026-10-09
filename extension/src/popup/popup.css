@@ -180,6 +180,11 @@ body {
   color: #b45309;
 }
 
+.notice {
+  background: #e8f0fe;
+  color: #174ea6;
+}
+
 .connect {
   border-top: 1px solid var(--line);
   margin-bottom: 8px;

@@ -7,13 +7,15 @@ from app.db.database import get_db
 from app.models.user import User
 from app.schemas.recording import RecordingUploadResponse
 from app.services.meeting_service import get_user_meeting
+from app.services.transcription_jobs import enqueue_transcription
 from app.services.recording_service import (
     MAX_UPLOAD_BYTES,
     ensure_recordings_dir,
-    is_webm_audio,
+    is_webm_recording,
     normalize_meeting_code,
     recording_destination,
     recording_filename,
+    recording_media_type,
     resolve_stored_recording,
     save_recording_meeting,
 )
@@ -37,8 +39,8 @@ async def upload_recording(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
 
-    if not is_webm_audio(file.content_type):
-        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Only WebM audio recordings are accepted")
+    if not is_webm_recording(file.content_type):
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Only WebM recordings are accepted")
 
     filename = recording_filename(code)
     try:
@@ -71,6 +73,7 @@ async def upload_recording(
             duration_seconds,
             f"recordings/{filename}",
         )
+        enqueue_transcription(meeting.id, meeting.recording_path or "")
     except HTTPException:
         destination.unlink(missing_ok=True)
         raise
@@ -108,7 +111,7 @@ def read_meeting_recording(
 
     return FileResponse(
         recording_file,
-        media_type="audio/webm",
+        media_type=recording_media_type(recording_file),
         filename=recording_file.name,
         content_disposition_type="inline",
     )

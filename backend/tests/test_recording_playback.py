@@ -125,6 +125,113 @@ def test_missing_recording_file_returns_404(client, recordings_dir):
     assert response.json()["detail"] == "Recording not found"
 
 
+def test_video_webm_upload_is_served_as_video(client):
+    _, token = register_and_login(client, "Owner", "owner-video@example.com")
+    video = b"\x1a\x45\xdf\xa3" + b"V_VP9" + b"A_OPUS"
+    response = client.post(
+        "/recordings/upload",
+        headers=auth_header(token),
+        data={"meeting_code": "owner-video", "duration_seconds": "8"},
+        files={"file": ("clip.webm", video, "video/webm")},
+    )
+    assert response.status_code == 201, response.text
+    meeting_id = response.json()["meeting_id"]
+
+    playback = client.get(f"/meetings/{meeting_id}/recording", headers=auth_header(token))
+
+    assert playback.status_code == 200
+    assert playback.headers["content-type"].startswith("video/webm")
+    assert playback.content == video
+
+
+def test_video_codec_recording_is_video_even_when_upload_said_audio(client):
+    _, token = register_and_login(client, "Owner", "owner-mislabeled-video@example.com")
+    video = b"webm-header" + b"V_VP8" + b"audio"
+    response = client.post(
+        "/recordings/upload",
+        headers=auth_header(token),
+        data={"meeting_code": "owner-mislabeled", "duration_seconds": "4"},
+        files={"file": ("clip.webm", video, "audio/webm")},
+    )
+    assert response.status_code == 201, response.text
+
+    playback = client.get(
+        f"/meetings/{response.json()['meeting_id']}/recording",
+        headers=auth_header(token),
+    )
+
+    assert playback.status_code == 200
+    assert playback.headers["content-type"].startswith("video/webm")
+
+
+def test_video_webm_codecs_parameter_is_accepted(client):
+    _, token = register_and_login(client, "Owner", "owner-codecs@example.com")
+    response = client.post(
+        "/recordings/upload",
+        headers=auth_header(token),
+        data={"meeting_code": "owner-codecs", "duration_seconds": "2"},
+        files={"file": ("clip.webm", b"webm-audio-bytes", "video/webm;codecs=vp9,opus")},
+    )
+
+    assert response.status_code == 201, response.text
+
+
+def test_codec_marker_after_cluster_does_not_mark_audio_as_video(client):
+    _, token = register_and_login(client, "Owner", "owner-cluster-audio@example.com")
+    cluster = b"\x1f\x43\xb6\x75"
+    audio = b"\x1a\x45\xdf\xa3" + b"A_OPUS" + cluster + (b"V_VP9" * 8)
+    response = client.post(
+        "/recordings/upload",
+        headers=auth_header(token),
+        data={"meeting_code": "owner-cluster-audio", "duration_seconds": "5"},
+        files={"file": ("clip.webm", audio, "audio/webm")},
+    )
+    assert response.status_code == 201, response.text
+
+    playback = client.get(
+        f"/meetings/{response.json()['meeting_id']}/recording",
+        headers=auth_header(token),
+    )
+
+    assert playback.status_code == 200
+    assert playback.headers["content-type"].startswith("audio/webm")
+    assert playback.content == audio
+
+
+def test_video_codec_before_first_cluster_is_served_as_video(client):
+    _, token = register_and_login(client, "Owner", "owner-cluster-video@example.com")
+    cluster = b"\x1f\x43\xb6\x75"
+    video = b"\x1a\x45\xdf\xa3" + b"V_VP9" + cluster + b"A_OPUS"
+    response = client.post(
+        "/recordings/upload",
+        headers=auth_header(token),
+        data={"meeting_code": "owner-cluster-video", "duration_seconds": "5"},
+        files={"file": ("clip.webm", video, "audio/webm")},
+    )
+    assert response.status_code == 201, response.text
+
+    playback = client.get(
+        f"/meetings/{response.json()['meeting_id']}/recording",
+        headers=auth_header(token),
+    )
+
+    assert playback.status_code == 200
+    assert playback.headers["content-type"].startswith("video/webm")
+
+
+def test_non_webm_upload_is_rejected(client):
+    _, token = register_and_login(client, "Owner", "owner-mp4@example.com")
+    response = client.post(
+        "/recordings/upload",
+        headers=auth_header(token),
+        data={"meeting_code": "owner-mp4", "duration_seconds": "2"},
+        files={"file": ("clip.mp4", b"not-webm", "video/mp4")},
+    )
+
+    assert response.status_code == 415
+    assert response.json()["detail"] == "Only WebM recordings are accepted"
+
+
 def test_path_traversal_cannot_access_files_outside_recordings_directory(client, recordings_dir):
     secret = recordings_dir.parent / "outside.webm"
     secret.write_bytes(SECRET)

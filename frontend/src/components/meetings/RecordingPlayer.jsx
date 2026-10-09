@@ -5,16 +5,25 @@ import Button from '../ui/Button.jsx'
 import Card from '../ui/Card.jsx'
 import Spinner from '../ui/Spinner.jsx'
 
+function playbackKind(contentType, blobType) {
+  const header = String(contentType || '').split(';', 1)[0].trim().toLowerCase()
+  const stored = String(blobType || '').split(';', 1)[0].trim().toLowerCase()
+  const type = header || stored
+  return type.startsWith('video/') ? 'video' : 'audio'
+}
+
 const RecordingPlayer = forwardRef(function RecordingPlayer(
-  { meetingId, hasRecording, durationSeconds = 0 },
+  { meetingId, hasRecording, durationSeconds = 0, onTimeUpdate },
   ref,
 ) {
   const sectionRef = useRef(null)
-  const audioRef = useRef(null)
+  const mediaRef = useRef(null)
   const pendingPlay = useRef(false)
+  const pendingSeek = useRef(null)
   const [attempt, setAttempt] = useState(0)
   const [status, setStatus] = useState(hasRecording ? 'loading' : 'empty')
   const [src, setSrc] = useState('')
+  const [kind, setKind] = useState('audio')
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [mediaDuration, setMediaDuration] = useState(0)
@@ -25,18 +34,36 @@ const RecordingPlayer = forwardRef(function RecordingPlayer(
     play() {
       sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
       if (!hasRecording || status === 'error') return
-      const audio = audioRef.current
-      if (status === 'ready' && audio) {
-        audio.play().catch(() => setPlaying(false))
+      const media = mediaRef.current
+      if (status === 'ready' && media) {
+        media.play().catch(() => setPlaying(false))
         return
       }
       pendingPlay.current = true
     },
-  }), [hasRecording, status])
+    seek(seconds) {
+      const next = Number(seconds)
+      if (!Number.isFinite(next) || next < 0) return
+      sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      onTimeUpdate?.(next)
+      if (!hasRecording || status === 'error') return
+      const media = mediaRef.current
+      if (status === 'ready' && media) {
+        pendingSeek.current = null
+        media.currentTime = next
+        setCurrentTime(next)
+        media.play().catch(() => setPlaying(false))
+        return
+      }
+      pendingSeek.current = next
+      pendingPlay.current = true
+    },
+  }), [hasRecording, onTimeUpdate, status])
 
   useEffect(() => {
     if (!hasRecording) {
       pendingPlay.current = false
+      pendingSeek.current = null
       return undefined
     }
 
@@ -44,22 +71,24 @@ const RecordingPlayer = forwardRef(function RecordingPlayer(
     let objectUrl = ''
     const controller = new AbortController()
 
-    // The audio element cannot attach the Axios Authorization header, so load the file as a blob.
+    // The media element cannot attach the Axios Authorization header, so load the file as a blob.
     getMeetingRecording(meetingId, { signal: controller.signal })
       .then((response) => {
         if (!response.data || response.data.size === 0) {
           if (active) setStatus('error')
           return
         }
+        const nextKind = playbackKind(response.headers?.['content-type'], response.data.type)
         const blob = response.data.type
           ? response.data
-          : new Blob([response.data], { type: 'audio/webm' })
+          : new Blob([response.data], { type: nextKind === 'video' ? 'video/webm' : 'audio/webm' })
         const nextUrl = URL.createObjectURL(blob)
         if (!active) {
           URL.revokeObjectURL(nextUrl)
           return
         }
         objectUrl = nextUrl
+        setKind(nextKind)
         setSrc(nextUrl)
         setStatus('ready')
       })
@@ -76,18 +105,24 @@ const RecordingPlayer = forwardRef(function RecordingPlayer(
   }, [attempt, hasRecording, meetingId])
 
   useEffect(() => {
-    const audio = audioRef.current
-    if (!audio) return
-    audio.volume = volume
+    const media = mediaRef.current
+    if (!media) return
+    if (kind === 'audio') media.volume = volume
+    if (status === 'ready' && pendingSeek.current != null) {
+      media.currentTime = pendingSeek.current
+      setCurrentTime(pendingSeek.current)
+      pendingSeek.current = null
+    }
     if (status === 'ready' && pendingPlay.current) {
       pendingPlay.current = false
-      audio.play().catch(() => setPlaying(false))
+      media.play().catch(() => setPlaying(false))
     }
-  }, [src, status, volume])
+  }, [kind, src, status, volume])
 
   function retry() {
     setStatus('loading')
     setSrc('')
+    setKind('audio')
     setPlaying(false)
     setCurrentTime(0)
     setMediaDuration(0)
@@ -95,32 +130,34 @@ const RecordingPlayer = forwardRef(function RecordingPlayer(
   }
 
   function togglePlay() {
-    const audio = audioRef.current
-    if (!audio) return
-    if (audio.paused) {
-      audio.play().catch(() => setPlaying(false))
+    const media = mediaRef.current
+    if (!media) return
+    if (media.paused) {
+      media.play().catch(() => setPlaying(false))
       return
     }
-    audio.pause()
+    media.pause()
   }
 
   function seek(event) {
     const next = Number(event.target.value)
     setCurrentTime(next)
-    if (audioRef.current) audioRef.current.currentTime = next
+    if (mediaRef.current) mediaRef.current.currentTime = next
   }
 
   function changeVolume(event) {
     const next = Number(event.target.value)
     setVolume(next)
-    if (audioRef.current) audioRef.current.volume = next
+    if (mediaRef.current) mediaRef.current.volume = next
   }
 
-  function syncFromAudio() {
-    const audio = audioRef.current
-    if (!audio) return
-    setCurrentTime(audio.currentTime || 0)
-    if (Number.isFinite(audio.duration) && audio.duration > 0) setMediaDuration(audio.duration)
+  function syncFromMedia() {
+    const media = mediaRef.current
+    if (!media || pendingSeek.current != null) return
+    const nextTime = media.currentTime || 0
+    setCurrentTime(nextTime)
+    onTimeUpdate?.(nextTime)
+    if (Number.isFinite(media.duration) && media.duration > 0) setMediaDuration(media.duration)
   }
 
   function handleMediaError() {
@@ -136,18 +173,41 @@ const RecordingPlayer = forwardRef(function RecordingPlayer(
         {status === 'empty' ? <EmptyRecording /> : null}
         {status === 'loading' ? <LoadingRecording /> : null}
         {status === 'error' ? <RecordingError onRetry={retry} /> : null}
-        {status === 'ready' && src ? (
+        {status === 'ready' && src && kind === 'video' ? (
+          <div className="mt-4 overflow-hidden rounded-lg bg-neutral-950">
+            <video
+              ref={mediaRef}
+              src={src}
+              controls
+              preload="metadata"
+              playsInline
+              className="aspect-video w-full bg-neutral-950"
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+              onEnded={() => setPlaying(false)}
+              onTimeUpdate={syncFromMedia}
+              onLoadedMetadata={syncFromMedia}
+              onDurationChange={syncFromMedia}
+              onError={handleMediaError}
+            />
+            <div className="flex items-center justify-between px-3 py-2 text-xs tabular-nums text-neutral-300">
+              <span>{formatTranscriptTime(currentTime)}</span>
+              <span>{knownDuration > 0 ? formatTranscriptTime(knownDuration) : 'Duration unavailable'}</span>
+            </div>
+          </div>
+        ) : null}
+        {status === 'ready' && src && kind === 'audio' ? (
           <div className="mt-4">
             <audio
-              ref={audioRef}
+              ref={mediaRef}
               src={src}
               preload="metadata"
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
               onEnded={() => setPlaying(false)}
-              onTimeUpdate={syncFromAudio}
-              onLoadedMetadata={syncFromAudio}
-              onDurationChange={syncFromAudio}
+              onTimeUpdate={syncFromMedia}
+              onLoadedMetadata={syncFromMedia}
+              onDurationChange={syncFromMedia}
               onError={handleMediaError}
             />
             <div className="flex w-full flex-col gap-4 sm:flex-row sm:items-center">
@@ -203,7 +263,7 @@ function EmptyRecording() {
   return (
     <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
       <p className="text-sm font-medium text-slate-900">No recording yet</p>
-      <p className="mt-1 text-sm text-slate-500">This meeting does not have an audio recording.</p>
+      <p className="mt-1 text-sm text-slate-500">This meeting does not have a recording.</p>
     </div>
   )
 }
@@ -221,7 +281,7 @@ function RecordingError({ onRetry }) {
   return (
     <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-8 text-center">
       <p className="text-sm font-medium text-slate-900">Unable to load recording</p>
-      <p className="mt-1 text-sm text-slate-500">The audio file could not be retrieved.</p>
+      <p className="mt-1 text-sm text-slate-500">The recording could not be retrieved.</p>
       <Button variant="secondary" size="sm" className="mt-4" onClick={onRetry}>
         Try again
       </Button>

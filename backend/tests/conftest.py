@@ -35,6 +35,25 @@ def client():
 
 
 @pytest.fixture(autouse=True)
+def capture_transcription_jobs(monkeypatch):
+    from app.services import intelligence_service, transcription_jobs
+
+    transcription_jobs.reset_transcription_state()
+    intelligence_service.reset_intelligence_state()
+    scheduled: list[tuple[int, str]] = []
+
+    def capture(meeting_id: int, recording_path: str) -> bool:
+        scheduled.append((meeting_id, recording_path))
+        return True
+
+    monkeypatch.setattr(transcription_jobs, "enqueue_transcription", capture)
+    monkeypatch.setattr("app.routers.recordings.enqueue_transcription", capture)
+    monkeypatch.setattr("app.routers.transcriptions.enqueue_transcription", capture)
+    yield scheduled
+    transcription_jobs.reset_transcription_state()
+
+
+@pytest.fixture(autouse=True)
 def recordings_dir(tmp_path, monkeypatch):
     directory = tmp_path / "uploads" / "recordings"
     directory.mkdir(parents=True)

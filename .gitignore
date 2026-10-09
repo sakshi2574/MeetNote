@@ -164,6 +164,9 @@ env/
 # Backend uploads
 backend/uploads/
 
+# Local speaker-diarization models
+backend/models/
+
 # SQLite databases
 *.db
 *.sqlite

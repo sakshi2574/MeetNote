@@ -8,6 +8,14 @@ export function transcribeMeeting(meetingId) {
   return client.post(`/meetings/${meetingId}/transcribe`)
 }
 
+export function getTranscriptionStatus(meetingId) {
+  return client.get(`/meetings/${meetingId}/transcription`)
+}
+
+export function retryTranscription(meetingId) {
+  return client.post(`/meetings/${meetingId}/transcription/retry`)
+}
+
 export function createTranscriptSegment(meetingId, data) {
   return client.post(`/meetings/${meetingId}/transcript`, data)
 }

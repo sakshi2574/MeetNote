@@ -77,6 +77,8 @@ class ActionItemResponse(BaseModel):
     assignee: str | None
     due_date: date | None
     status: str
+    timestamp: float | None = None
+    source: str = "manual"
     created_at: datetime
     updated_at: datetime
 

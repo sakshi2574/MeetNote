@@ -9,8 +9,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db.database import SessionLocal
 from app.models.meeting import Meeting
 from app.models.transcript_segment import TranscriptSegment
-from app.routers import transcriptions as transcriptions_router
 from app.services import transcription_service
+from app.services.transcription_service import EmptyTranscription
 
 AUDIO = b"webm-audio-bytes"
 INTERNAL_ERROR = "local decoder failed: internal-detail-do-not-leak"
@@ -83,12 +83,22 @@ def saved_segment(meeting_id: int) -> TranscriptSegment:
 
 
 def segments_result(*texts: str):
-    return iter(SimpleNamespace(text=text) for text in texts), SimpleNamespace()
+    return (
+        iter(SimpleNamespace(text=text, start=0.5, end=2.75) for text in texts),
+        SimpleNamespace(language="en", duration=3.0),
+    )
 
 
 def install_whisper(monkeypatch, model_cls):
     monkeypatch.setattr(transcription_service, "_whisper_model", None)
     monkeypatch.setattr(transcription_service, "WhisperModel", model_cls)
+
+
+@pytest.fixture(autouse=True)
+def reset_transcription_claim():
+    transcription_service._transcription_owner = None
+    yield
+    transcription_service._transcription_owner = None
 
 
 class FakeWhisperModel:
@@ -99,6 +109,7 @@ class FakeWhisperModel:
         self.audio_paths: list[Path] = []
 
     def transcribe(self, audio, **kwargs):
+        assert kwargs.get("word_timestamps") is False
         self.audio_paths.append(Path(audio))
         return segments_result("Discussed the launch plan.")
 
@@ -110,6 +121,7 @@ class FailingWhisperModel:
         assert compute_type == "int8"
 
     def transcribe(self, audio, **kwargs):
+        assert kwargs.get("word_timestamps") is False
         raise RuntimeError(INTERNAL_ERROR)
 
 
@@ -165,7 +177,7 @@ def test_valid_recording_uses_local_whisper(client, monkeypatch):
     meeting_id = upload_recording(client, token, "owner-transcribe-ok")
     calls: dict[str, Path] = {}
     created: list[FakeWhisperModel] = []
-    real = transcriptions_router.transcribe_recording
+    real = transcription_service.transcribe_recording
 
     class RecordingWhisperModel(FakeWhisperModel):
         def __init__(self, model_size_or_path, device, compute_type):
@@ -177,7 +189,7 @@ def test_valid_recording_uses_local_whisper(client, monkeypatch):
         return real(recording_path)
 
     install_whisper(monkeypatch, RecordingWhisperModel)
-    monkeypatch.setattr(transcriptions_router, "transcribe_recording", spy)
+    monkeypatch.setattr("app.services.transcription_jobs.transcribe_recording", spy)
 
     response = client.post(f"/meetings/{meeting_id}/transcribe", headers=auth_header(token))
 
@@ -185,12 +197,14 @@ def test_valid_recording_uses_local_whisper(client, monkeypatch):
     body = response.json()
     assert body["meeting_id"] == meeting_id
     assert body["text"] == "Discussed the launch plan."
+    assert body["language"] == "en"
     assert len(body["segments"]) == 1
     saved = body["segments"][0]
     assert saved["meeting_id"] == meeting_id
     assert saved["speaker"] == "Unknown"
-    assert saved["start_time"] == 0
-    assert saved["end_time"] == 3
+    assert saved["source"] == "ai"
+    assert saved["start_time"] == 0.5
+    assert saved["end_time"] == 2.75
     assert saved["text"] == "Discussed the launch plan."
     assert calls["path"].is_file()
     assert calls["path"].read_bytes() == AUDIO
@@ -228,7 +242,7 @@ def test_transcription_service_reports_missing_file():
         transcription_service.transcribe_recording(Path("missing-recording.webm"))
 
 
-def test_zero_duration_segment_ends_at_zero(client, recordings_dir, monkeypatch):
+def test_segment_times_come_from_whisper_not_meeting_duration(client, recordings_dir, monkeypatch):
     user_id, token = register_and_login(client, "Owner", "owner-transcribe-zero@example.com")
     (recordings_dir / "zero-duration.webm").write_bytes(AUDIO)
     meeting_id = add_meeting(user_id, "Zero duration", "recordings/zero-duration.webm")
@@ -238,8 +252,8 @@ def test_zero_duration_segment_ends_at_zero(client, recordings_dir, monkeypatch)
 
     assert response.status_code == 200, response.text
     saved = response.json()["segments"][0]
-    assert saved["start_time"] == 0
-    assert saved["end_time"] == 0
+    assert saved["start_time"] == 0.5
+    assert saved["end_time"] == 2.75
     assert saved["text"] == "Discussed the launch plan."
 
 
@@ -267,6 +281,7 @@ def test_repeated_transcription_replaces_generated_segment_only(client, monkeypa
             created.append(self)
 
         def transcribe(self, audio, **kwargs):
+            assert kwargs.get("word_timestamps") is False
             self.audio_paths.append(Path(audio))
             return segments_result(texts.pop(0))
 
@@ -284,8 +299,8 @@ def test_repeated_transcription_replaces_generated_segment_only(client, monkeypa
     assert replaced["id"] != first.json()["segments"][0]["id"]
     assert replaced["meeting_id"] == meeting_id
     assert replaced["text"] == "Revised the launch plan."
-    assert replaced["start_time"] == 0
-    assert replaced["end_time"] == 3
+    assert replaced["start_time"] == 0.5
+    assert replaced["end_time"] == 2.75
     assert transcript_count(meeting_id) == 2
 
     transcript = client.get(f"/meetings/{meeting_id}/transcript", headers=auth_header(token))
@@ -305,6 +320,7 @@ def test_transcription_failure_keeps_existing_transcript(client, monkeypatch, ca
 
     class FlakyWhisperModel(FakeWhisperModel):
         def transcribe(self, audio, **kwargs):
+            assert kwargs.get("word_timestamps") is False
             calls["count"] += 1
             if calls["count"] > 1:
                 raise RuntimeError(INTERNAL_ERROR)
@@ -335,7 +351,7 @@ def test_database_failure_does_not_expose_internal_error(client, monkeypatch, ca
     def boom(_db, _meeting, _text):
         raise SQLAlchemyError(INTERNAL_ERROR)
 
-    monkeypatch.setattr(transcriptions_router, "replace_generated_transcript", boom)
+    monkeypatch.setattr("app.services.transcription_jobs.replace_generated_transcript", boom)
     with caplog.at_level("DEBUG"):
         response = client.post(f"/meetings/{meeting_id}/transcribe", headers=auth_header(token))
 
@@ -344,3 +360,140 @@ def test_database_failure_does_not_expose_internal_error(client, monkeypatch, ca
     assert INTERNAL_ERROR not in response.text
     assert INTERNAL_ERROR not in caplog.text
     assert transcript_count(meeting_id) == 0
+
+
+def test_whisper_segments_keep_their_own_timestamps(client, monkeypatch):
+    _, token = register_and_login(client, "Owner", "owner-transcribe-cues@example.com")
+    meeting_id = upload_recording(client, token, "owner-transcribe-cues")
+
+    class TimedWhisperModel(FakeWhisperModel):
+        def transcribe(self, audio, **kwargs):
+            assert kwargs.get("word_timestamps") is False
+            return (
+                iter(
+                    [
+                        SimpleNamespace(text="  Hello   team. ", start=1.25, end=2.5),
+                        SimpleNamespace(text="   ", start=2.5, end=3.0),
+                        SimpleNamespace(text="Missing times"),
+                        SimpleNamespace(text="Backwards.", start=4.0, end=3.0),
+                        SimpleNamespace(text="We shipped it.", start=0.0, end=1.2),
+                        SimpleNamespace(text="Clamped.", start=-0.4, end=0.2),
+                    ]
+                ),
+                SimpleNamespace(language=" en "),
+            )
+
+    install_whisper(monkeypatch, TimedWhisperModel)
+    response = client.post(f"/meetings/{meeting_id}/transcribe", headers=auth_header(token))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["language"] == "en"
+    assert body["text"] == "Clamped. We shipped it. Hello team."
+    assert [(row["start_time"], row["end_time"], row["text"]) for row in body["segments"]] == [
+        (0.0, 0.2, "Clamped."),
+        (0.0, 1.2, "We shipped it."),
+        (1.25, 2.5, "Hello team."),
+    ]
+    assert all(row["speaker"] == "Unknown" for row in body["segments"])
+    assert all(row["source"] == "ai" for row in body["segments"])
+    assert transcript_count(meeting_id) == 3
+
+
+def test_empty_transcription_is_not_a_decoder_failure(client, monkeypatch, caplog):
+    _, token = register_and_login(client, "Owner", "owner-transcribe-silent@example.com")
+    meeting_id = upload_recording(client, token, "owner-transcribe-silent")
+    manual = client.post(
+        f"/meetings/{meeting_id}/transcript",
+        headers=auth_header(token),
+        json={"speaker": "Alex", "start_time": 0, "end_time": 1, "text": "Typed by hand."},
+    )
+    assert manual.status_code == 201, manual.text
+
+    class SilentWhisperModel(FakeWhisperModel):
+        def transcribe(self, audio, **kwargs):
+            assert kwargs.get("word_timestamps") is False
+            return iter([SimpleNamespace(text="   ", start=0.0, end=1.0)]), SimpleNamespace(language="en")
+
+    install_whisper(monkeypatch, SilentWhisperModel)
+    with caplog.at_level("DEBUG"):
+        response = client.post(f"/meetings/{meeting_id}/transcribe", headers=auth_header(token))
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "No speech was detected"
+    assert "Local transcription failed" not in caplog.text
+    assert transcript_count(meeting_id) == 1
+    transcript = client.get(f"/meetings/{meeting_id}/transcript", headers=auth_header(token))
+    assert transcript.json()[0]["text"] == "Typed by hand."
+    assert transcript.json()[0]["source"] == "manual"
+
+
+def test_edited_generated_segment_survives_retranscription(client, monkeypatch):
+    _, token = register_and_login(client, "Owner", "owner-transcribe-edit@example.com")
+    meeting_id = upload_recording(client, token, "owner-transcribe-edit")
+    texts = ["Discussed the launch plan.", "Revised the launch plan."]
+
+    class SequenceWhisperModel(FakeWhisperModel):
+        def transcribe(self, audio, **kwargs):
+            assert kwargs.get("word_timestamps") is False
+            return segments_result(texts.pop(0))
+
+    install_whisper(monkeypatch, SequenceWhisperModel)
+    first = client.post(f"/meetings/{meeting_id}/transcribe", headers=auth_header(token))
+    assert first.status_code == 200, first.text
+    segment_id = first.json()["segments"][0]["id"]
+
+    edited = client.put(
+        f"/transcript/{segment_id}",
+        headers=auth_header(token),
+        json={"text": "Corrected by hand."},
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["source"] == "manual"
+    assert edited.json()["start_time"] == 0.5
+    assert edited.json()["end_time"] == 2.75
+
+    second = client.post(f"/meetings/{meeting_id}/transcribe", headers=auth_header(token))
+    assert second.status_code == 200, second.text
+    transcript = client.get(f"/meetings/{meeting_id}/transcript", headers=auth_header(token))
+    rows = transcript.json()
+    texts_saved = [row["text"] for row in rows]
+    assert "Discussed the launch plan." not in texts_saved
+    assert "Corrected by hand." in texts_saved
+    assert "Revised the launch plan." in texts_saved
+    kept = next(row for row in rows if row["id"] == segment_id)
+    assert kept["source"] == "manual"
+    assert kept["text"] == "Corrected by hand."
+    generated = next(row for row in rows if row["source"] == "ai")
+    assert generated["text"] == "Revised the launch plan."
+    assert generated["id"] != segment_id
+
+
+def test_transcription_already_in_progress_returns_409(client, monkeypatch):
+    _, token = register_and_login(client, "Owner", "owner-transcribe-busy@example.com")
+    meeting_id = upload_recording(client, token, "owner-transcribe-busy")
+    other_id = upload_recording(client, token, "owner-transcribe-busy-other")
+    install_whisper(monkeypatch, FakeWhisperModel)
+    assert transcription_service.claim_transcription(meeting_id) is True
+    try:
+        same = client.post(f"/meetings/{meeting_id}/transcribe", headers=auth_header(token))
+        other = client.post(f"/meetings/{other_id}/transcribe", headers=auth_header(token))
+    finally:
+        transcription_service.release_transcription(meeting_id)
+
+    assert same.status_code == 409
+    assert same.json()["detail"] == "Transcription is already in progress"
+    assert other.status_code == 409
+    assert transcript_count(meeting_id) == 0
+    assert transcript_count(other_id) == 0
+
+    retried = client.post(f"/meetings/{meeting_id}/transcribe", headers=auth_header(token))
+    assert retried.status_code == 200, retried.text
+
+
+def test_speech_cues_reject_recordings_with_no_timed_speech():
+    with pytest.raises(EmptyTranscription):
+        transcription_service._speech_cues(
+            [SimpleNamespace(text="No times here")],
+            SimpleNamespace(language="en"),
+        )

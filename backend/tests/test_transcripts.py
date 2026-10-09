@@ -35,6 +35,7 @@ def test_transcript_crud_still_works(client):
         json={"speaker": "Alex", "start_time": 1, "end_time": 2, "text": "I will send the notes."},
     )
     assert created.status_code == 201, created.text
+    assert created.json()["source"] == "manual"
     segment_id = created.json()["id"]
 
     listed = client.get(f"/meetings/{meeting_id}/transcript", headers=auth_header(token))
@@ -54,6 +55,33 @@ def test_transcript_crud_still_works(client):
     assert deleted.status_code == 200, deleted.text
     listed_again = client.get(f"/meetings/{meeting_id}/transcript", headers=auth_header(token))
     assert listed_again.json() == []
+
+
+def test_speaker_field_stores_stable_labels(client):
+    token = register_and_login(client, "Owner", "owner-speaker-labels@example.com")
+    created_meeting = client.post(
+        "/meetings",
+        headers=auth_header(token),
+        json={"title": "Speaker labels"},
+    )
+    meeting_id = created_meeting.json()["id"]
+
+    created = client.post(
+        f"/meetings/{meeting_id}/transcript",
+        headers=auth_header(token),
+        json={"speaker": "Speaker 2", "start_time": 4, "end_time": 5, "text": "A later voice."},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["speaker"] == "Speaker 2"
+    first = client.post(
+        f"/meetings/{meeting_id}/transcript",
+        headers=auth_header(token),
+        json={"speaker": "Speaker 1", "start_time": 1, "end_time": 2, "text": "The first voice."},
+    )
+    assert first.status_code == 201, first.text
+
+    listed = client.get(f"/meetings/{meeting_id}/transcript", headers=auth_header(token))
+    assert [row["speaker"] for row in listed.json()] == ["Speaker 1", "Speaker 2"]
 
 
 def test_other_user_cannot_add_transcript_segment(client):

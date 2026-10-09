@@ -8,6 +8,9 @@ const DOWNLOAD_CLEANUP_TIMEOUT_MS = 120000;
 let queue = Promise.resolve();
 /** @type {Promise<void> | null} */
 let offscreenCreating = null;
+/** Last explicit Meet mic report, including one that arrived before the audio graph existed. */
+/** @type {{ tabId: number, micEnabled: boolean } | null} */
+let rememberedMic = null;
 
 /**
  * @template T
@@ -37,8 +40,8 @@ async function ensureOffscreenDocument() {
   }
   offscreenCreating = chrome.offscreen.createDocument({
     url: OFFSCREEN_PATH,
-    reasons: ['USER_MEDIA'],
-    justification: 'Capture Google Meet tab audio and the microphone, mix them, and encode the result with MediaRecorder.'
+    reasons: ['USER_MEDIA', 'DISPLAY_MEDIA'],
+    justification: 'Capture the Google Meet tab, mix Meet audio with the microphone while Meet\'s microphone is on, and capture the local presentation while the user is presenting.'
   });
   try {
     await offscreenCreating;
@@ -88,6 +91,8 @@ async function updateState(patch) {
 }
 
 async function failWith(message) {
+  presentSerial += 1;
+  presentLatch = false;
   await closeOffscreenDocument();
   const state = await resetState({ lastError: message });
   await broadcastState(state);
@@ -109,6 +114,7 @@ async function startRecording(requestedTabId) {
     : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
 
   if (!tab || tab.id === undefined) throw new Error('No active tab was found.');
+  rememberedMic = null;
 
   const { isMeet, meetingCode } = parseMeetUrl(tab.url);
   if (!isMeet) throw new Error('Open a Google Meet tab before recording.');
@@ -120,6 +126,8 @@ async function startRecording(requestedTabId) {
     startedAt: null,
     accumulatedMs: 0,
     lastError: null,
+    presentation: 'idle',
+    presentationNotice: null,
     upload: null
   });
 
@@ -128,14 +136,40 @@ async function startRecording(requestedTabId) {
     await ensureOffscreenDocument();
 
     const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+    const micEnabled = await readMeetMicEnabled(tab.id);
     await sendToOffscreen({
       type: MSG.OFFSCREEN_START,
       streamId,
       audioBitsPerSecond: settings.audioBitsPerSecond,
-      keepTabAudible: settings.keepTabAudible
+      keepTabAudible: settings.keepTabAudible,
+      micEnabled: typeof micEnabled === 'boolean' ? micEnabled : null
     });
+    const latestMic = await readMeetMicEnabled(tab.id);
+    const resolvedMic =
+      typeof latestMic === 'boolean'
+        ? latestMic
+        : rememberedMic && rememberedMic.tabId === tab.id
+          ? rememberedMic.micEnabled
+          : null;
+    if (typeof resolvedMic === 'boolean') {
+      try {
+        console.log(`[ServiceWorker] MIC STATE = ${resolvedMic ? 'ON' : 'OFF'}`);
+        await sendToOffscreen({ type: MSG.OFFSCREEN_SET_MIC, micEnabled: resolvedMic });
+      } catch {
+        // Recording already started. A later mute or unmute message still updates the gain.
+      }
+    }
 
-    return await updateState({ status: STATUS.RECORDING, startedAt: Date.now(), accumulatedMs: 0 });
+    const started = await updateState({
+      status: STATUS.RECORDING,
+      startedAt: Date.now(),
+      accumulatedMs: 0,
+      presentation: 'idle',
+      presentationNotice: null
+    });
+    const meet = await readMeetStatus(tab.id);
+    if (meet && meet.localPresenting) void beginPresentation(tab.id);
+    return started;
   } catch (error) {
     await failWith(describeError(error));
     throw error;
@@ -161,6 +195,8 @@ async function resumeRecording() {
 }
 
 async function stopRecording(reason) {
+  presentSerial += 1;
+  presentLatch = false;
   const state = await readState();
   if (!isActive(state.status) && state.status !== STATUS.STARTING) {
     throw new Error('Nothing is being recorded.');
@@ -332,11 +368,196 @@ function describeError(error) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Meet microphone                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @param {number} tabId
+ * @returns {Promise<{ micEnabled?: boolean, localPresenting?: boolean } | null>}
+ */
+async function readMeetStatus(tabId) {
+  try {
+    const status = await chrome.tabs.sendMessage(tabId, { type: MSG.MEET_STATUS });
+    if (status && status.ok) return status;
+  } catch {
+    // Content script has not been injected.
+  }
+  return null;
+}
+
+/**
+ * Reads the local Meet microphone control. Null means the button was not found.
+ * @param {number} tabId
+ * @returns {Promise<boolean | null>}
+ */
+async function readMeetMicEnabled(tabId) {
+  const status = await readMeetStatus(tabId);
+  return status && typeof status.micEnabled === 'boolean' ? status.micEnabled : null;
+}
+
+/**
+ * Updates the live mix without restarting MediaRecorder.
+ * The microphone capture stays open; only its gain changes.
+ * @param {number | undefined} tabId
+ * @param {unknown} micEnabled
+ */
+async function applyMeetMic(tabId, micEnabled) {
+  if (typeof micEnabled !== 'boolean' || tabId == null) return;
+  rememberedMic = { tabId, micEnabled };
+  console.log(`[ServiceWorker] MIC STATE = ${micEnabled ? 'ON' : 'OFF'}`);
+  const state = await readState();
+  if (state.tabId !== tabId) return;
+  if (state.status !== STATUS.STARTING && !isActive(state.status)) return;
+  if (!(await hasOffscreenDocument())) return;
+  try {
+    await sendToOffscreen({ type: MSG.OFFSCREEN_SET_MIC, micEnabled });
+  } catch {
+    // The recorder is still starting, or it has already stopped.
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Local presentation                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Bumps when presenting stops so a picker that resolves later cannot mark capture active. */
+let presentSerial = 0;
+/** After cancel, deny, or the Chrome share ending, wait until Meet presenting turns off before asking again. */
+let presentLatch = false;
+
+function presentFailureNotice(error) {
+  const raw = error instanceof Error ? error.message : String(error || '');
+  if (/cancelled or denied|NotAllowedError|AbortError/i.test(raw)) {
+    return 'Presentation capture was cancelled. Recording the Meet view.';
+  }
+  return 'Presentation capture was not added. Recording the Meet view.';
+}
+
+/**
+ * Opens the Chrome display picker without restarting the meeting recorder.
+ * @param {number} tabId
+ */
+async function beginPresentation(tabId) {
+  const current = await readState();
+  if (current.tabId !== tabId || !isActive(current.status)) return current;
+  if (presentLatch || current.presentation === 'active' || current.presentation === 'requesting') return current;
+  const serial = ++presentSerial;
+  console.log('[ServiceWorker] LOCAL_PRESENTATION_STARTED');
+
+  await updateState({
+    presentation: 'requesting',
+    presentationNotice: 'Select the screen, window, or tab being presented.'
+  });
+  const marked = await readState();
+  if (serial !== presentSerial || marked.tabId !== tabId || !isActive(marked.status)) return marked;
+
+  /** @type {{ presenting?: boolean }} */
+  let response;
+  try {
+    response = await sendToOffscreen({ type: MSG.OFFSCREEN_PRESENT_START });
+  } catch (error) {
+    if (serial !== presentSerial) return readState();
+    const latest = await readState();
+    if (!isActive(latest.status) || latest.tabId !== tabId) return latest;
+    const stillPresenting = await readMeetStatus(tabId);
+    if (stillPresenting && stillPresenting.localPresenting) presentLatch = true;
+    return updateState({ presentation: 'idle', presentationNotice: presentFailureNotice(error) });
+  }
+
+  if (serial !== presentSerial) return readState();
+  const latest = await readState();
+  if (!isActive(latest.status) || latest.tabId !== tabId) return latest;
+  if (response.presenting) {
+    console.log('[MeetNote] presentation capture active');
+    return updateState({
+      presentation: 'active',
+      presentationNotice: 'Presentation capture active.'
+    });
+  }
+  const stillPresenting = await readMeetStatus(tabId);
+  if (stillPresenting && stillPresenting.localPresenting) presentLatch = true;
+  return updateState({
+    presentation: 'idle',
+    presentationNotice: stillPresenting && stillPresenting.localPresenting ? 'Presentation capture ended.' : null
+  });
+}
+
+/**
+ * Drops the display capture and returns the canvas to the Meet tab.
+ * @param {number | undefined} tabId
+ * @param {'meet-stopped' | 'capture-ended'} reason
+ */
+async function endPresentation(tabId, reason) {
+  presentSerial += 1;
+  const state = await readState();
+  if (tabId != null && state.tabId !== tabId) return state;
+  if (!isActive(state.status)) return state;
+  const wasActive = state.presentation === 'active';
+  try {
+    if (await hasOffscreenDocument()) await sendToOffscreen({ type: MSG.OFFSCREEN_PRESENT_STOP });
+  } catch {
+    // The recorder has already stopped.
+  }
+  const latest = await readState();
+  if (!isActive(latest.status)) return latest;
+  if (reason === 'meet-stopped') presentLatch = false;
+  console.log(`[ServiceWorker] presentation capture stopped (${reason})`);
+  return updateState({
+    presentation: 'idle',
+    presentationNotice: wasActive || reason === 'capture-ended' ? 'Presentation capture ended.' : null
+  });
+}
+
+/**
+ * @param {number | undefined} tabId
+ * @param {unknown} localPresenting
+ */
+async function onLocalPresenting(tabId, localPresenting) {
+  if (tabId == null || typeof localPresenting !== 'boolean') return;
+  if (localPresenting) return beginPresentation(tabId);
+  const state = await readState();
+  if (state.tabId === tabId && state.presentation === 'requesting') {
+    console.log('[ServiceWorker] LOCAL_PRESENTATION_STOPPED ignored while the picker is open');
+    return state;
+  }
+  console.log('[ServiceWorker] LOCAL_PRESENTATION_STOPPED');
+  return endPresentation(tabId, 'meet-stopped');
+}
+
+async function presentationCaptureEnded() {
+  const state = await readState();
+  const tabId = state.tabId == null ? undefined : state.tabId;
+  if (tabId != null) {
+    const stillPresenting = await readMeetStatus(tabId);
+    presentLatch = Boolean(stillPresenting && stillPresenting.localPresenting);
+  } else {
+    presentLatch = true;
+  }
+  return endPresentation(tabId, 'capture-ended');
+}
+
+/* ------------------------------------------------------------------ */
 /* Message routing                                                     */
 /* ------------------------------------------------------------------ */
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message || message.target === TARGET.OFFSCREEN) return undefined;
+
+  if (message.type === MSG.MIC_STATE) {
+    const tabId = sender.tab && sender.tab.id;
+    applyMeetMic(tabId, message.micEnabled)
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (message.type === MSG.PRESENT_STATE) {
+    const tabId = sender.tab && sender.tab.id;
+    onLocalPresenting(tabId, message.localPresenting)
+      .then(() => sendResponse({ ok: true }))
+      .catch(() => sendResponse({ ok: true }));
+    return true;
+  }
 
   const handlers = {
     [MSG.GET_STATE]: () => readState(),
@@ -346,7 +567,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     [MSG.STOP]: () => enqueue(() => stopRecording('user')),
     [MSG.CLEAR_ERROR]: () => updateState({ lastError: null }),
     [MSG.CAPTURE_ENDED]: () => enqueue(() => stopRecording('capture-ended')),
-    [MSG.CAPTURE_ERROR]: () => enqueue(() => failWith(describeError(message.error)))
+    [MSG.CAPTURE_ERROR]: () => enqueue(() => failWith(describeError(message.error))),
+    [MSG.PRESENTATION_ENDED]: () => presentationCaptureEnded()
   };
 
   const handler = handlers[message.type];

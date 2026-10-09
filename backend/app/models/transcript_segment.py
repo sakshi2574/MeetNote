@@ -19,6 +19,8 @@ class TranscriptSegment(Base):
         index=True,
         nullable=False,
     )
+    # Display label only. Later diarization can store stable labels such as
+    # "Speaker 1". Transcription without speaker information uses "Unknown".
     speaker: Mapped[str] = mapped_column(String(255), nullable=False)
     start_time: Mapped[float] = mapped_column(Float, nullable=False)
     end_time: Mapped[float] = mapped_column(Float, nullable=False)

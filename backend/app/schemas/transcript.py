@@ -74,6 +74,7 @@ class TranscriptSegmentResponse(BaseModel):
     start_time: float
     end_time: float
     text: str
+    source: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

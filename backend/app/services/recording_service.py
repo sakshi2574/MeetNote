@@ -12,7 +12,13 @@ from app.models.meeting import Meeting
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 RECORDINGS_DIR = BACKEND_DIR / "uploads" / "recordings"
 MEETING_CODE_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
-ALLOWED_WEBM_TYPES = {"audio/webm", "audio/webm;codecs=opus"}
+WEBM_MEDIA_TYPES = {"audio/webm", "video/webm"}
+# MediaRecorder writes the video CodecID in the WebM header, before media clusters.
+_VIDEO_CODEC_MARKERS = (b"V_VP8", b"V_VP9", b"V_AV1")
+# EBML Cluster element ID. Media payload starts here, so a codec string after this
+# point is not a track header.
+_CLUSTER_ELEMENT_ID = b"\x1f\x43\xb6\x75"
+_HEADER_SCAN_BYTES = 2 * 1024 * 1024
 
 
 def normalize_meeting_code(meeting_code: str) -> str:
@@ -24,11 +30,38 @@ def normalize_meeting_code(meeting_code: str) -> str:
     return cleaned
 
 
-def is_webm_audio(content_type: str | None) -> bool:
+def _media_type_base(content_type: str | None) -> str:
     if not content_type:
-        return False
-    normalized = content_type.lower().replace(" ", "")
-    return normalized in ALLOWED_WEBM_TYPES
+        return ""
+    return content_type.split(";", 1)[0].strip().lower()
+
+
+def is_webm_audio(content_type: str | None) -> bool:
+    return _media_type_base(content_type) == "audio/webm"
+
+
+def is_webm_recording(content_type: str | None) -> bool:
+    return _media_type_base(content_type) in WEBM_MEDIA_TYPES
+
+
+def recording_media_type(path: Path) -> str:
+    """Return the playback type for a stored WebM file.
+
+    Older recordings are audio-only. Current recordings include a VP8, VP9, or AV1
+    track, which is identified from the file header rather than the upload label.
+    """
+    if path.suffix.lower() != ".webm":
+        return "application/octet-stream"
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(_HEADER_SCAN_BYTES)
+    except OSError:
+        return "audio/webm"
+    cluster_at = header.find(_CLUSTER_ELEMENT_ID)
+    header_bytes = header if cluster_at < 0 else header[:cluster_at]
+    if any(marker in header_bytes for marker in _VIDEO_CODEC_MARKERS):
+        return "video/webm"
+    return "audio/webm"
 
 
 def recording_filename(meeting_code: str) -> str:
@@ -75,10 +108,16 @@ def save_recording_meeting(
             platform="Google Meet",
             status="completed",
             recording_path=relative_path,
+            transcription_status="pending",
+            transcription_language=None,
+            transcription_error=None,
         )
         db.add(meeting)
     else:
         meeting.recording_path = relative_path
+        meeting.transcription_status = "pending"
+        meeting.transcription_language = None
+        meeting.transcription_error = None
         if duration_seconds > meeting.duration_seconds:
             meeting.duration_seconds = duration_seconds
 

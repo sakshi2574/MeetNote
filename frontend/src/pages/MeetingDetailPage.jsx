@@ -2,8 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { getActionItems } from '../api/actionItems.js'
 import { getDecisions } from '../api/decisions.js'
+import {
+  getMeetingIntelligence,
+  regenerateMeetingIntelligence,
+  updateMeetingSummary,
+} from '../api/intelligence.js'
 import { getMeeting, updateMeeting } from '../api/meetings.js'
-import { getTranscript, transcribeMeeting } from '../api/transcripts.js'
+import { getTranscript, getTranscriptionStatus, retryTranscription, updateTranscriptSegment } from '../api/transcripts.js'
 import ActionItems from '../components/intelligence/ActionItems.jsx'
 import Decisions from '../components/intelligence/Decisions.jsx'
 import Summary from '../components/intelligence/Summary.jsx'
@@ -18,30 +23,52 @@ import Card from '../components/ui/Card.jsx'
 import EmptyState from '../components/ui/EmptyState.jsx'
 import Spinner from '../components/ui/Spinner.jsx'
 import Toast from '../components/ui/Toast.jsx'
-import { meetingSummary } from '../data/meetingIntelligence.js'
 import {
   formatActionItem,
   formatDecision,
   formatMeeting,
   formatTranscriptSegment,
 } from '../lib/formatMeeting.js'
+import {
+  formatIntelligence,
+  INTELLIGENCE_POLL_MS,
+  intelligenceView,
+  shouldPollIntelligence,
+} from '../lib/intelligenceStatus.js'
+import {
+  shouldPollTranscription,
+  shouldRefreshTranscript,
+  TRANSCRIPTION_POLL_MS,
+  transcriptionStatusView,
+} from '../lib/transcriptionStatus.js'
 
 export default function MeetingDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const recordingRef = useRef(null)
-  const generatingMeetingIdRef = useRef(null)
-  const requestTokenRef = useRef(0)
   const savingRef = useRef(false)
+  const transcriptEditingRef = useRef(false)
+  const deferredTranscriptRefresh = useRef(false)
+  const insightListsStale = useRef(false)
   const [result, setResult] = useState(null)
   const [tabState, setTabState] = useState({ id, tab: 'transcript' })
-  const [generatingMeetingId, setGeneratingMeetingId] = useState(null)
+  const [transcription, setTranscription] = useState({ id, snapshot: null })
+  const [pollGeneration, setPollGeneration] = useState(0)
+  const [insights, setInsights] = useState({ id, data: null, error: '' })
+  const [insightPoll, setInsightPoll] = useState(0)
+  const [regeneratingId, setRegeneratingId] = useState(null)
   const [notice, setNotice] = useState(null)
   const [editorMeetingId, setEditorMeetingId] = useState(null)
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState('')
+  const [playback, setPlayback] = useState({ id, time: 0 })
+  const playbackTime = playback.id === id ? playback.time : 0
   const activeTab = tabState.id === id ? tabState.tab : 'transcript'
-  const generating = generatingMeetingId === id
+  const transcriptionSnapshot = transcription.id === id ? transcription.snapshot : null
+  const transcriptionView = transcriptionStatusView(transcriptionSnapshot)
+  const currentInsights = insights.id === id ? insights : { data: null, error: '' }
+  const insightView = intelligenceView(currentInsights.data, transcriptionSnapshot?.status ?? null)
+  const regenerating = regeneratingId === id
   const visibleNotice = notice?.meetingId === id ? notice : null
   const editing = editorMeetingId === id
   const current = result?.id === id ? result : null
@@ -120,12 +147,232 @@ export default function MeetingDetailPage() {
     return () => window.clearTimeout(timer)
   }, [notice])
 
+  useEffect(() => {
+    if (!meeting?.hasRecording) return undefined
+    let cancelled = false
+    let timer = 0
+    let failures = 0
+    let transcriptionWasBusy = false
+
+    function applySegments(rows) {
+      if (transcriptEditingRef.current) {
+        deferredTranscriptRefresh.current = true
+        return
+      }
+      deferredTranscriptRefresh.current = false
+      setResult((currentResult) => {
+        if (!currentResult || currentResult.id !== id) return currentResult
+        return {
+          ...currentResult,
+          segments: rows.map(formatTranscriptSegment),
+          transcriptError: '',
+        }
+      })
+    }
+
+    async function tick() {
+      try {
+        const response = await getTranscriptionStatus(id)
+        if (cancelled) return
+        const snapshot = response.data
+        setTranscription({ id, snapshot })
+        if (shouldPollTranscription(snapshot?.status)) transcriptionWasBusy = true
+        if (snapshot?.status === 'completed' && transcriptionWasBusy) {
+          transcriptionWasBusy = false
+          insightListsStale.current = true
+          setInsightPoll((value) => value + 1)
+        }
+        if (shouldRefreshTranscript(snapshot?.status, transcriptEditingRef.current)) {
+          const loaded = await getTranscript(id)
+          if (cancelled) return
+          const rows = readTranscriptSegments(loaded.data)
+          if (rows) applySegments(rows)
+          return
+        }
+        if (snapshot?.status === 'completed') {
+          deferredTranscriptRefresh.current = true
+          return
+        }
+        failures = 0
+        if (shouldPollTranscription(snapshot?.status)) {
+          timer = window.setTimeout(tick, TRANSCRIPTION_POLL_MS)
+        }
+      } catch {
+        failures += 1
+        if (!cancelled && failures < 3) timer = window.setTimeout(tick, TRANSCRIPTION_POLL_MS)
+      }
+    }
+
+    tick()
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [id, meeting?.hasRecording, pollGeneration])
+
+  useEffect(() => {
+    let cancelled = false
+    let timer = 0
+    let failures = 0
+    let sawProcessing = false
+
+    async function tick() {
+      try {
+        const response = await getMeetingIntelligence(id)
+        if (cancelled) return
+        const data = formatIntelligence(response.data)
+        setInsights({ id, data, error: '' })
+        failures = 0
+        if (shouldPollIntelligence(data.status)) {
+          sawProcessing = true
+          timer = window.setTimeout(tick, INTELLIGENCE_POLL_MS)
+          return
+        }
+        if ((sawProcessing || insightListsStale.current) && data.status !== null) {
+          insightListsStale.current = false
+          const lists = await loadIntelligenceLists(id)
+          if (!cancelled) applyIntelligenceLists(id, lists)
+        }
+      } catch {
+        if (cancelled) return
+        failures += 1
+        if (failures < 3) {
+          timer = window.setTimeout(tick, INTELLIGENCE_POLL_MS)
+        } else {
+          setInsights((value) =>
+            value.id === id ? { ...value, error: 'Unable to load the summary.' } : { id, data: null, error: 'Unable to load the summary.' },
+          )
+        }
+      }
+    }
+
+    tick()
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [id, insightPoll])
+
+  function applyIntelligenceLists(meetingId, lists) {
+    setResult((currentResult) => {
+      if (!currentResult || currentResult.id !== meetingId) return currentResult
+      return { ...currentResult, ...lists }
+    })
+  }
+
+  async function runInsights(replaceSummary) {
+    if (regeneratingId != null) return
+    const meetingId = id
+    setRegeneratingId(meetingId)
+    try {
+      const response = await regenerateMeetingIntelligence(meetingId, { replaceSummary })
+      const data = formatIntelligence(response.data)
+      setInsights({ id: meetingId, data, error: '' })
+      applyIntelligenceLists(meetingId, await loadIntelligenceLists(meetingId))
+      if (data.status === 'failed') {
+        setNotice({ id: Date.now(), meetingId, tone: 'error', message: data.error || 'Meeting insights could not be generated.' })
+      }
+    } catch (error) {
+      const busy = error.response?.status === 409
+      setNotice({
+        id: Date.now(),
+        meetingId,
+        tone: 'error',
+        message: busy ? 'Meeting insights are already being generated.' : 'Unable to generate meeting insights.',
+      })
+      if (busy) setInsightPoll((value) => value + 1)
+    } finally {
+      setRegeneratingId(null)
+    }
+  }
+
+  async function saveSummary(text) {
+    const response = await updateMeetingSummary(id, text)
+    setInsights({ id, data: formatIntelligence(response.data), error: '' })
+  }
+
+  function replaceActionItem(updated) {
+    setResult((currentResult) => {
+      if (!currentResult || currentResult.id !== id) return currentResult
+      return {
+        ...currentResult,
+        actionItems: currentResult.actionItems.map((item) => (item.id === updated.id ? updated : item)),
+      }
+    })
+  }
+
+  function replaceDecision(updated) {
+    setResult((currentResult) => {
+      if (!currentResult || currentResult.id !== id) return currentResult
+      return {
+        ...currentResult,
+        decisions: currentResult.decisions.map((item) => (item.id === updated.id ? updated : item)),
+      }
+    })
+  }
+
   function selectTab(tab) {
     setTabState({ id, tab })
   }
 
   function playRecording() {
     recordingRef.current?.play()
+  }
+
+  function seekRecording(seconds) {
+    recordingRef.current?.seek(seconds)
+  }
+
+  function handleTranscriptEditing(isEditing) {
+    transcriptEditingRef.current = isEditing
+    if (isEditing || !deferredTranscriptRefresh.current) return
+    deferredTranscriptRefresh.current = false
+    getTranscript(id)
+      .then((loaded) => {
+        const rows = readTranscriptSegments(loaded.data)
+        if (!rows || transcriptEditingRef.current) {
+          if (transcriptEditingRef.current) deferredTranscriptRefresh.current = true
+          return
+        }
+        setResult((currentResult) => {
+          if (!currentResult || currentResult.id !== id) return currentResult
+          return {
+            ...currentResult,
+            segments: rows.map(formatTranscriptSegment),
+            transcriptError: '',
+          }
+        })
+      })
+      .catch(() => {})
+  }
+
+  async function retryFailedTranscription() {
+    try {
+      const response = await retryTranscription(id)
+      setTranscription({ id, snapshot: response.data })
+      setPollGeneration((value) => value + 1)
+    } catch {
+      setNotice({
+        id: Date.now(),
+        meetingId: id,
+        tone: 'error',
+        message: 'Unable to retry transcription.',
+      })
+    }
+  }
+
+  async function saveTranscriptSegment(segmentId, text) {
+    const response = await updateTranscriptSegment(segmentId, { text })
+    const updated = formatTranscriptSegment(response.data)
+    setResult((currentResult) => {
+      if (!currentResult || currentResult.id !== id) return currentResult
+      return {
+        ...currentResult,
+        segments: currentResult.segments.map((segment) =>
+          segment.id === segmentId ? updated : segment,
+        ),
+      }
+    })
   }
 
   function dismissNotice() {
@@ -172,84 +419,6 @@ export default function MeetingDetailPage() {
     }
   }
 
-  function generateTranscript() {
-    if (!meeting?.hasRecording) return
-
-    if (generatingMeetingIdRef.current != null) {
-      if (generatingMeetingIdRef.current !== id) {
-        setNotice({
-          id: Date.now(),
-          meetingId: id,
-          tone: 'error',
-          message: 'Transcription is already in progress.',
-        })
-      }
-      return
-    }
-
-    const meetingId = id
-    const token = requestTokenRef.current + 1
-    requestTokenRef.current = token
-    generatingMeetingIdRef.current = meetingId
-    setGeneratingMeetingId(meetingId)
-    setNotice(null)
-    setTabState({ id: meetingId, tab: 'transcript' })
-
-    const isCurrent = () =>
-      requestTokenRef.current === token && generatingMeetingIdRef.current === meetingId
-
-    const finish = (nextNotice) => {
-      if (!isCurrent()) return
-      generatingMeetingIdRef.current = null
-      setGeneratingMeetingId(null)
-      setNotice(nextNotice)
-    }
-
-    transcribeMeeting(meetingId)
-      .then((created) => {
-        const createdSegments = readTranscriptSegments(created.data)
-        return getTranscript(meetingId)
-          .then((loaded) => readTranscriptSegments(loaded.data) ?? createdSegments)
-          .catch(() => createdSegments)
-      })
-      .then((segments) => {
-        if (!isCurrent()) return
-        if (!segments) {
-          finish({
-            id: Date.now(),
-            meetingId,
-            tone: 'error',
-            message: 'Transcript was generated, but it could not be loaded.',
-          })
-          return
-        }
-
-        setResult((currentResult) => {
-          if (currentResult?.id !== meetingId) return currentResult
-          return {
-            ...currentResult,
-            segments: segments.map(formatTranscriptSegment),
-            transcriptError: '',
-          }
-        })
-        setTabState({ id: meetingId, tab: 'transcript' })
-        finish({
-          id: Date.now(),
-          meetingId,
-          tone: 'success',
-          message: 'Transcript generated.',
-        })
-      })
-      .catch((error) => {
-        finish({
-          id: Date.now(),
-          meetingId,
-          tone: 'error',
-          message: transcriptionErrorMessage(error),
-        })
-      })
-  }
-
   if (loading) {
     return (
       <div className="flex justify-center py-16">
@@ -280,19 +449,14 @@ export default function MeetingDetailPage() {
 
   return (
     <div className="space-y-6">
-      <MeetingDetailHeader
-        meeting={meeting}
-        onEdit={openEdit}
-        onPlay={playRecording}
-        onGenerateTranscript={generateTranscript}
-        generatingTranscript={generating}
-      />
+      <MeetingDetailHeader meeting={meeting} onEdit={openEdit} onPlay={playRecording} />
       <RecordingPlayer
         key={id}
         ref={recordingRef}
         meetingId={id}
         hasRecording={meeting.hasRecording}
         durationSeconds={meeting.durationSeconds}
+        onTimeUpdate={(time) => setPlayback({ id, time })}
       />
       <div className="grid items-start gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
         <MeetingMeta meeting={meeting} platform={meeting.platform} />
@@ -304,22 +468,45 @@ export default function MeetingDetailPage() {
             id={`meeting-panel-${activeTab}`}
             aria-labelledby={`meeting-tab-${activeTab}`}
           >
-            {activeTab === 'transcript' && generating ? (
-              <p className="mb-4 flex items-center gap-2 text-sm text-slate-600" role="status">
-                <Spinner label="Generating transcript" />
-                Generating transcript...
-              </p>
+            {activeTab === 'transcript' && transcriptionView.message ? (
+              <div className="mb-4 flex flex-wrap items-center gap-3" role="status">
+                {transcriptionView.busy ? <Spinner label={transcriptionView.message} /> : null}
+                <p className="text-sm text-slate-600">{transcriptionView.message}</p>
+                {transcriptionView.failed ? (
+                  <Button variant="secondary" size="sm" onClick={retryFailedTranscription}>
+                    Retry transcription
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
-            {activeTab === 'transcript' && transcriptError && !generating ? (
+            {activeTab === 'transcript' && transcriptError ? (
               <p className="text-sm text-slate-600">{transcriptError}</p>
             ) : null}
-            {activeTab === 'transcript' && !transcriptError && segments.length === 0 && !generating ? (
+            {activeTab === 'transcript' && !transcriptError && segments.length === 0 && !transcriptionView.busy && !transcriptionView.failed ? (
               <p className="text-sm text-slate-600">No transcript yet.</p>
             ) : null}
             {activeTab === 'transcript' && !transcriptError && segments.length > 0 ? (
-              <TranscriptView segments={segments} />
+              <TranscriptView
+                segments={segments}
+                playbackTime={playbackTime}
+                onSeek={meeting.hasRecording ? seekRecording : undefined}
+                onSaveSegment={saveTranscriptSegment}
+                onEditingChange={handleTranscriptEditing}
+              />
             ) : null}
-            {activeTab === 'summary' ? <Summary summary={meetingSummary} /> : null}
+            {activeTab === 'summary' ? (
+              <Summary
+                intelligence={currentInsights.data}
+                view={insightView}
+                loadError={currentInsights.error}
+                regenerating={regenerating}
+                canGenerate={segments.length > 0}
+                onRegenerate={() => runInsights(false)}
+                onReplaceSummary={() => runInsights(true)}
+                onSaveSummary={saveSummary}
+                onSeek={meeting.hasRecording ? seekRecording : undefined}
+              />
+            ) : null}
             {activeTab === 'actions' && actionItemsError ? (
               <p className="text-sm text-slate-600">{actionItemsError}</p>
             ) : null}
@@ -327,7 +514,11 @@ export default function MeetingDetailPage() {
               <p className="text-sm text-slate-600">No action items yet.</p>
             ) : null}
             {activeTab === 'actions' && !actionItemsError && actionItems.length > 0 ? (
-              <ActionItems items={actionItems} />
+              <ActionItems
+                items={actionItems}
+                onUpdated={replaceActionItem}
+                onSeek={meeting.hasRecording ? seekRecording : undefined}
+              />
             ) : null}
             {activeTab === 'decisions' && decisionsError ? (
               <p className="text-sm text-slate-600">{decisionsError}</p>
@@ -336,7 +527,11 @@ export default function MeetingDetailPage() {
               <p className="text-sm text-slate-600">No decisions yet.</p>
             ) : null}
             {activeTab === 'decisions' && !decisionsError && decisions.length > 0 ? (
-              <Decisions decisions={decisions} />
+              <Decisions
+                decisions={decisions}
+                onUpdated={replaceDecision}
+                onSeek={meeting.hasRecording ? seekRecording : undefined}
+              />
             ) : null}
           </Card>
         </div>
@@ -362,20 +557,21 @@ export default function MeetingDetailPage() {
   )
 }
 
+async function loadIntelligenceLists(meetingId) {
+  const [actions, decisionList] = await Promise.all([
+    getActionItems(meetingId)
+      .then((response) => ({ actionItems: response.data.map(formatActionItem), actionItemsError: '' }))
+      .catch(() => ({ actionItems: [], actionItemsError: 'Unable to load action items' })),
+    getDecisions(meetingId)
+      .then((response) => ({ decisions: response.data.map(formatDecision), decisionsError: '' }))
+      .catch(() => ({ decisions: [], decisionsError: 'Unable to load decisions' })),
+  ])
+  return { ...actions, ...decisionList }
+}
+
 function readTranscriptSegments(data) {
   if (Array.isArray(data)) return data
   if (Array.isArray(data?.segments)) return data.segments
   return null
 }
 
-function transcriptionErrorMessage(error) {
-  const status = error.response?.status
-  const detail = typeof error.response?.data?.detail === 'string' ? error.response.data.detail : ''
-  const inProgress = status === 409 || /already in progress/i.test(detail)
-
-  if (inProgress) return 'Transcription is already in progress.'
-  if (status === 404) return 'A recording is required before a transcript can be generated.'
-  if (status === 502) return 'Transcription failed. Please try again.'
-  if (status === 500) return 'The transcript could not be saved. Please try again.'
-  return 'Unable to generate the transcript. Please try again.'
-}
