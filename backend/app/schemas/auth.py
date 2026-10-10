@@ -13,6 +13,8 @@ class UserLogin(BaseModel):
     email: EmailStr
     password: str
 
+class UserProfileUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
 
 class TokenResponse(BaseModel):
     access_token: str

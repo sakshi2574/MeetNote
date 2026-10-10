@@ -9,7 +9,11 @@ const tabs = [
 
 export default function MeetingTabs({ activeTab, onChange }) {
   return (
-    <div role="tablist" aria-label="Meeting sections" className="flex gap-2 overflow-x-auto pb-1">
+    <div
+      role="tablist"
+      aria-label="Meeting sections"
+      className="flex gap-2 overflow-x-auto pb-1"
+    >
       {tabs.map((tab) => {
         const selected = activeTab === tab.id
 

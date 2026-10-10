@@ -37,7 +37,9 @@ export default function TranscriptView({ segments, playbackTime = 0, onSeek, onS
       <TranscriptSearch value={query} onChange={setQuery} onClear={() => setQuery('')} />
       {visibleSegments.length === 0 ? (
         <div className="mt-6 px-2 py-10 text-center">
-          <p className="text-sm font-medium text-slate-900">No transcript matches found.</p>
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
+  No transcript matches found.
+</p>
           <Button variant="secondary" size="sm" className="mt-4" onClick={() => setQuery('')}>
             Clear search
           </Button>

@@ -4,7 +4,10 @@ export default function Logo() {
       <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-700 text-sm font-semibold text-white">
         M
       </span>
-      <span className="text-base font-semibold tracking-tight text-slate-900">MeetNote</span>
+
+      <span className="text-base font-semibold tracking-tight text-slate-900 transition-colors dark:text-slate-100">
+        MeetNote
+      </span>
     </span>
   )
 }

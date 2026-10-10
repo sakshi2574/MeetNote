@@ -11,3 +11,7 @@ export function register(name, email, password) {
 export function getCurrentUser() {
   return client.get('/auth/me')
 }
+
+export function updateCurrentUser(name) {
+  return client.patch('/auth/me', { name })
+}

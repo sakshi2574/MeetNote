@@ -1,22 +1,31 @@
 import Card from '../ui/Card.jsx'
 
 const detailTones = {
-  positive: 'text-emerald-700',
-  attention: 'text-amber-700',
-  neutral: 'text-slate-500',
+  positive: 'text-emerald-700 dark:text-emerald-400',
+  attention: 'text-amber-700 dark:text-amber-400',
+  neutral: 'text-slate-500 dark:text-slate-400',
 }
 
 export default function StatCard({ label, value, detail, tone = 'neutral' }) {
   return (
-    <Card className="transition-colors hover:border-slate-300">
+    <Card className="transition-colors hover:border-slate-300 dark:hover:border-slate-600">
       <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
           <StatIcon label={label} />
         </span>
-        <p className="text-sm font-medium text-slate-500">{label}</p>
+
+        <p className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          {label}
+        </p>
       </div>
-      <p className="mt-4 text-3xl font-semibold tracking-tight text-slate-900">{value}</p>
-      <p className={`mt-2 text-sm ${detailTones[tone] ?? detailTones.neutral}`}>{detail}</p>
+
+      <p className="mt-4 text-3xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+        {value}
+      </p>
+
+      <p className={`mt-2 text-sm ${detailTones[tone] ?? detailTones.neutral}`}>
+        {detail}
+      </p>
     </Card>
   )
 }
@@ -25,8 +34,21 @@ function StatIcon({ label }) {
   if (label === 'Recording Hours') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
-        <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
-        <path d="M12 8v4.5l3 2" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        <circle
+          cx="12"
+          cy="12"
+          r="8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        />
+        <path
+          d="M12 8v4.5l3 2"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
       </svg>
     )
   }
@@ -42,7 +64,16 @@ function StatIcon({ label }) {
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <rect
+          x="4"
+          y="4"
+          width="16"
+          height="16"
+          rx="3"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        />
       </svg>
     )
   }
@@ -50,7 +81,14 @@ function StatIcon({ label }) {
   if (label === 'Pending Tasks') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
-        <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <circle
+          cx="12"
+          cy="12"
+          r="8"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        />
         <circle cx="12" cy="12" r="2.2" fill="currentColor" />
       </svg>
     )

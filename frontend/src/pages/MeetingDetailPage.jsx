@@ -487,7 +487,7 @@ export default function MeetingDetailPage() {
             {activeTab === 'transcript' && transcriptionView.message ? (
               <div className="mb-4 flex flex-wrap items-center gap-3" role="status">
                 {transcriptionView.busy ? <Spinner label={transcriptionView.message} /> : null}
-                <p className="text-sm text-slate-600">{transcriptionView.message}</p>
+                <p className="text-sm text-slate-600 dark:text-slate-300">{transcriptionView.message}</p>
                 {transcriptionView.failed ? (
                   <Button variant="secondary" size="sm" onClick={retryFailedTranscription}>
                     Retry transcription
@@ -496,10 +496,10 @@ export default function MeetingDetailPage() {
               </div>
             ) : null}
             {activeTab === 'transcript' && transcriptError ? (
-              <p className="text-sm text-slate-600">{transcriptError}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">{transcriptError}</p>
             ) : null}
             {activeTab === 'transcript' && !transcriptError && segments.length === 0 && !transcriptionView.busy && !transcriptionView.failed ? (
-              <p className="text-sm text-slate-600">No transcript yet.</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">No transcript yet.</p>
             ) : null}
             {activeTab === 'transcript' && !transcriptError && segments.length > 0 ? (
               <TranscriptView
@@ -524,10 +524,10 @@ export default function MeetingDetailPage() {
               />
             ) : null}
             {activeTab === 'actions' && actionItemsError ? (
-              <p className="text-sm text-slate-600">{actionItemsError}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">{actionItemsError}</p>
             ) : null}
             {activeTab === 'actions' && !actionItemsError && actionItems.length === 0 ? (
-              <p className="text-sm text-slate-600">No action items yet.</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">No action items yet.</p>
             ) : null}
             {activeTab === 'actions' && !actionItemsError && actionItems.length > 0 ? (
               <ActionItems
@@ -537,10 +537,10 @@ export default function MeetingDetailPage() {
               />
             ) : null}
             {activeTab === 'decisions' && decisionsError ? (
-              <p className="text-sm text-slate-600">{decisionsError}</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">{decisionsError}</p>
             ) : null}
             {activeTab === 'decisions' && !decisionsError && decisions.length === 0 ? (
-              <p className="text-sm text-slate-600">No decisions yet.</p>
+              <p className="text-sm text-slate-600 dark:text-slate-300">No decisions yet.</p>
             ) : null}
             {activeTab === 'decisions' && !decisionsError && decisions.length > 0 ? (
               <Decisions
@@ -597,4 +597,3 @@ function readTranscriptSegments(data) {
   if (Array.isArray(data?.segments)) return data.segments
   return null
 }
-

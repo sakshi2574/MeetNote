@@ -1,9 +1,11 @@
 import { useNavigate } from 'react-router-dom'
+
 import Badge from '../ui/Badge.jsx'
 import Button from '../ui/Button.jsx'
 
 export default function MeetingDetailHeader({ meeting, onEdit, onExport, onPlay }) {
   const navigate = useNavigate()
+
   const tone = meeting.status === 'Completed' ? 'success' : 'neutral'
 
   return (
@@ -12,16 +14,22 @@ export default function MeetingDetailHeader({ meeting, onEdit, onExport, onPlay 
         <ArrowIcon />
         Back to Meetings
       </Button>
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-2xl font-semibold tracking-tight text-slate-900">{meeting.title}</h2>
+            <h2 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+              {meeting.title}
+            </h2>
+
             <Badge tone={tone}>{meeting.status}</Badge>
           </div>
-          <p className="mt-2 text-sm text-slate-500">
+
+          <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
             <span>{meeting.date}</span>
             <span aria-hidden="true"> · </span>
             <span>{meeting.duration}</span>
+
             {meeting.participants != null ? (
               <>
                 <span aria-hidden="true"> · </span>
@@ -29,18 +37,32 @@ export default function MeetingDetailHeader({ meeting, onEdit, onExport, onPlay 
               </>
             ) : null}
           </p>
+
           {meeting.description ? (
-            <p className="mt-2 text-sm leading-6 text-slate-600">{meeting.description}</p>
+            <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">
+              {meeting.description}
+            </p>
           ) : null}
         </div>
+
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          <Button variant="secondary" className="w-full sm:w-auto" onClick={onEdit}>
+          <Button
+            variant="secondary"
+            className="w-full sm:w-auto"
+            onClick={onEdit}
+          >
             Edit
           </Button>
-          <Button variant="secondary" className="w-full sm:w-auto" onClick={onExport}>
+
+          <Button
+            variant="secondary"
+            className="w-full sm:w-auto"
+            onClick={onExport}
+          >
             <DownloadIcon />
             Export
           </Button>
+
           <Button className="w-full sm:w-auto" onClick={onPlay}>
             <PlayIcon />
             Play Recording
@@ -54,7 +76,14 @@ export default function MeetingDetailHeader({ meeting, onEdit, onExport, onPlay 
 function ArrowIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" className="h-4 w-4">
-      <path d="M15 6 9 12l6 6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M15 6 9 12l6 6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   )
 }

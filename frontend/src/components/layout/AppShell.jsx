@@ -30,11 +30,11 @@ export default function AppShell() {
   }, [sidebarOpen])
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
       <Sidebar open={sidebarOpen} onClose={closeSidebar} />
       <div className="md:pl-64">
         <Topbar title={title} sidebarOpen={sidebarOpen} onMenuClick={openSidebar} />
-        <main className="px-4 py-6 sm:px-6 lg:px-8">
+        <main className="px-4 py-6 text-slate-900 transition-colors dark:text-slate-100 sm:px-6 lg:px-8">
           <Outlet />
         </main>
       </div>

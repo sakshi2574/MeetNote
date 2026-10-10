@@ -38,6 +38,7 @@ export default function TranscriptSegment({
 
   async function saveEdit() {
     const next = draft.trim()
+
     if (!next) {
       setError('Transcript text cannot be empty.')
       return
@@ -45,6 +46,7 @@ export default function TranscriptSegment({
 
     setSaving(true)
     setError('')
+
     try {
       await onSave(segment.id, next)
       setEditing(false)
@@ -59,7 +61,11 @@ export default function TranscriptSegment({
     <article
       ref={rowRef}
       aria-current={active ? 'true' : undefined}
-      className={`flex gap-3 rounded-lg px-2 py-3 transition-colors ${active ? 'bg-teal-50' : 'hover:bg-slate-50'}`}
+      className={`flex gap-3 rounded-lg px-2 py-3 transition-colors ${
+        active
+          ? 'bg-teal-50 dark:bg-teal-950/60'
+          : 'hover:bg-slate-50 dark:hover:bg-slate-800/70'
+      }`}
     >
       {onSeek ? (
         <button
@@ -67,39 +73,49 @@ export default function TranscriptSegment({
           onClick={() => onSeek(segment.startTime)}
           title={`${segment.time}–${endLabel}`}
           aria-label={`Jump to ${segment.time}`}
-          className="w-12 shrink-0 pt-0.5 text-left font-mono text-xs text-slate-400 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+          className="w-12 shrink-0 pt-0.5 text-left font-mono text-xs text-slate-400 hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:hover:text-white"
         >
           {segment.time}
         </button>
       ) : (
-        <time dateTime={segment.time} className="w-12 shrink-0 pt-0.5 font-mono text-xs text-slate-400">
+        <time
+          dateTime={segment.time}
+          className="w-12 shrink-0 pt-0.5 font-mono text-xs text-slate-400"
+        >
           {segment.time}
         </time>
       )}
+
       <span
         aria-hidden="true"
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-50 text-xs font-semibold text-teal-800"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-teal-50 text-xs font-semibold text-teal-800 dark:bg-teal-900 dark:text-teal-200"
       >
         {speakerMark(segment.speaker)}
       </span>
+
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-3">
-          <p className="text-sm font-medium text-slate-900">
+          <p className="text-sm font-medium text-slate-900 dark:text-slate-100">
             {segment.speaker}
+
             {segment.source === 'manual' ? (
-              <span className="ml-2 text-xs font-medium text-slate-400">Manual</span>
+              <span className="ml-2 text-xs font-medium text-slate-400 dark:text-slate-500">
+                Manual
+              </span>
             ) : null}
           </p>
+
           {onSave && !editing ? (
             <button
               type="button"
               onClick={beginEdit}
-              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-white hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-slate-500 hover:bg-white hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-white"
             >
               Edit
             </button>
           ) : null}
         </div>
+
         {editing ? (
           <form
             className="mt-2"
@@ -108,28 +124,46 @@ export default function TranscriptSegment({
               saveEdit()
             }}
           >
-            <label className="sr-only" htmlFor={`transcript-edit-${segment.id}`}>
+            <label
+              className="sr-only"
+              htmlFor={`transcript-edit-${segment.id}`}
+            >
               Transcript text
             </label>
+
             <textarea
               id={`transcript-edit-${segment.id}`}
               value={draft}
               rows={3}
               onChange={(event) => setDraft(event.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-900 outline-none focus:border-slate-300 focus:ring-2 focus:ring-slate-200"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-900 outline-none focus:border-teal-500 focus:ring-2 focus:ring-teal-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:focus:ring-teal-900"
             />
-            {error ? <p className="mt-2 text-sm text-rose-700">{error}</p> : null}
+
+            {error ? (
+              <p className="mt-2 text-sm text-rose-700 dark:text-rose-400">
+                {error}
+              </p>
+            ) : null}
+
             <div className="mt-3 flex gap-2">
               <Button size="sm" type="submit" loading={saving}>
                 Save
               </Button>
-              <Button size="sm" variant="secondary" onClick={cancelEdit} disabled={saving}>
+
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={cancelEdit}
+                disabled={saving}
+              >
                 Cancel
               </Button>
             </div>
           </form>
         ) : (
-          <p className="mt-1 text-sm leading-6 text-slate-600">{segment.text}</p>
+          <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+            {segment.text}
+          </p>
         )}
       </div>
     </article>

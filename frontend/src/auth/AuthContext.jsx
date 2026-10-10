@@ -1,5 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import { getCurrentUser, login as loginRequest } from '../api/auth.js'
+import {
+  getCurrentUser,
+  login as loginRequest,
+  updateCurrentUser,
+} from '../api/auth.js'
 import { ACCESS_TOKEN_KEY } from '../api/client.js'
 
 const AuthContext = createContext(null)
@@ -53,6 +57,12 @@ export function AuthProvider({ children }) {
     }
   }, [])
 
+  const updateProfile = useCallback(async (name) => {
+    const response = await updateCurrentUser(name)
+    setUser(response.data)
+    return response.data
+  }, [])
+
   const logout = useCallback(() => {
     localStorage.removeItem(ACCESS_TOKEN_KEY)
     setToken(null)
@@ -67,8 +77,9 @@ export function AuthProvider({ children }) {
       isAuthenticated: Boolean(user),
       login,
       logout,
+      updateProfile,
     }),
-    [token, user, loading, login, logout],
+    [token, user, loading, login, logout, updateProfile],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

@@ -1,29 +1,40 @@
 import { useNavigate } from 'react-router-dom'
+
 import Badge from '../ui/Badge.jsx'
+
 import Button from '../ui/Button.jsx'
+
 import Card from '../ui/Card.jsx'
+
 import MeetingIcon from './MeetingIcon.jsx'
 
 export default function MeetingCard({ meeting, onEdit, onDelete }) {
   const navigate = useNavigate()
+
   const tone = meeting.status === 'Completed' ? 'success' : 'neutral'
 
   return (
-    <Card className="transition-colors hover:border-slate-300">
+    <Card className="transition-colors hover:border-slate-300 dark:hover:border-slate-600">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         <div className="flex min-w-0 flex-1 gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-50 text-teal-700 dark:bg-teal-900/60 dark:text-teal-300">
             <MeetingIcon />
           </span>
-          <div className="min-w-0">
+
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base font-semibold text-slate-900">{meeting.title}</h3>
+              <h3 className="break-words text-base font-semibold text-slate-900 dark:text-slate-100">
+                {meeting.title}
+              </h3>
+
               <Badge tone={tone}>{meeting.status}</Badge>
             </div>
-            <p className="mt-1 text-sm text-slate-500">
+
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               <span>{meeting.date}</span>
               <span aria-hidden="true"> · </span>
               <span>{meeting.duration}</span>
+
               {meeting.participants != null ? (
                 <>
                   <span aria-hidden="true"> · </span>
@@ -31,9 +42,15 @@ export default function MeetingCard({ meeting, onEdit, onDelete }) {
                 </>
               ) : null}
             </p>
-            <p className="mt-2 text-sm leading-6 text-slate-600">{meeting.description}</p>
+
+            {meeting.description ? (
+              <p className="mt-2 break-words text-sm leading-6 text-slate-600 dark:text-slate-300">
+                {meeting.description}
+              </p>
+            ) : null}
           </div>
         </div>
+
         <div className="flex w-full shrink-0 gap-2 sm:w-auto">
           <Button
             variant="secondary"
@@ -43,6 +60,7 @@ export default function MeetingCard({ meeting, onEdit, onDelete }) {
           >
             Open
           </Button>
+
           <Button
             variant="secondary"
             className="flex-1 sm:flex-none"
@@ -51,6 +69,7 @@ export default function MeetingCard({ meeting, onEdit, onDelete }) {
           >
             Edit
           </Button>
+
           <Button
             variant="danger"
             className="flex-1 sm:flex-none"

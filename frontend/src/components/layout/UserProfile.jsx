@@ -7,16 +7,26 @@ export default function UserProfile({ compact = false }) {
   const initial = name.slice(0, 1).toUpperCase()
 
   return (
-    <div className="flex min-w-0 items-center gap-3" role="group" aria-label={`${name}, ${email}`}>
+    <div
+      className="flex min-w-0 items-center gap-3"
+      role="group"
+      aria-label={`${name}, ${email}`}
+    >
       <span
         aria-hidden="true"
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-semibold text-white dark:bg-teal-700"
       >
         {initial}
       </span>
-      <span className={compact ? 'hidden min-w-0 lg:block' : 'min-w-0'}>
-        <span className="block truncate text-sm font-medium text-slate-900">{name}</span>
-        <span className="block truncate text-xs text-slate-500">{email}</span>
+
+      <span className={compact ? 'hidden min-w-0 lg:block' : 'min-w-0 flex-1'}>
+        <span className="block truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
+          {name}
+        </span>
+
+        <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+          {email}
+        </span>
       </span>
     </div>
   )

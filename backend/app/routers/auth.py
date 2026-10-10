@@ -5,7 +5,13 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import get_current_user
 from app.db.database import get_db
 from app.models.user import User
-from app.schemas.auth import TokenResponse, UserLogin, UserRegister, UserResponse
+from app.schemas.auth import (
+    TokenResponse,
+    UserLogin,
+    UserProfileUpdate,
+    UserRegister,
+    UserResponse,
+)
 from app.services.auth_service import (
     authenticate_user,
     create_user_access_token,
@@ -46,4 +52,24 @@ def login(payload: UserLogin, db: Session = Depends(get_db)) -> TokenResponse:
 
 @router.get("/me", response_model=UserResponse)
 def read_me(current_user: User = Depends(get_current_user)) -> User:
+    return current_user
+
+@router.patch("/me", response_model=UserResponse)
+def update_me(
+    payload: UserProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    name = payload.name.strip()
+
+    if not name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Name cannot be empty",
+        )
+
+    current_user.name = name
+    db.commit()
+    db.refresh(current_user)
+
     return current_user

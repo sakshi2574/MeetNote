@@ -1,8 +1,11 @@
-import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
+
 import { useAuth } from '../../auth/AuthContext.jsx'
 import { primaryNav } from '../../routes/navigation.js'
+
 import Badge from '../ui/Badge.jsx'
 import Button from '../ui/Button.jsx'
+
 import Logo from './Logo.jsx'
 import UserProfile from './UserProfile.jsx'
 
@@ -33,18 +36,28 @@ export default function Sidebar({ open, onClose }) {
           onClick={onClose}
         />
       ) : null}
+
       <aside
         id="app-sidebar"
-        className={`fixed inset-y-0 left-0 z-40 w-64 flex-col border-r border-slate-200 bg-white ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 flex-col border-r border-slate-200 bg-white transition-colors dark:border-slate-800 dark:bg-slate-950 ${
           open ? 'flex' : 'hidden'
         } md:flex`}
       >
-        <div className="flex h-16 shrink-0 items-center border-b border-slate-200 px-4">
-          <Link to="/" onClick={onClose} className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400">
+        <div className="flex h-16 shrink-0 items-center border-b border-slate-200 px-4 dark:border-slate-800">
+          <NavLink
+            to="/"
+            onClick={onClose}
+            aria-label="MeetNote home"
+            className="rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:focus-visible:ring-teal-500"
+          >
             <Logo />
-          </Link>
+          </NavLink>
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label="Primary">
+
+        <nav
+          className="flex-1 space-y-1 overflow-y-auto px-3 py-4"
+          aria-label="Primary"
+        >
           {primaryNav.map((item) => {
             const Icon = icons[item.label]
 
@@ -52,7 +65,7 @@ export default function Sidebar({ open, onClose }) {
               return (
                 <div
                   key={item.label}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-400"
+                  className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-400 dark:text-slate-500"
                   aria-disabled="true"
                 >
                   <Icon />
@@ -69,10 +82,10 @@ export default function Sidebar({ open, onClose }) {
                 end={item.end}
                 onClick={onClose}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
+                  `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 dark:focus-visible:ring-teal-500 ${
                     isActive
-                      ? 'bg-slate-900 text-white'
-                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                      ? 'bg-slate-900 text-white dark:bg-teal-700 dark:text-white'
+                      : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white'
                   }`
                 }
               >
@@ -82,9 +95,15 @@ export default function Sidebar({ open, onClose }) {
             )
           })}
         </nav>
-        <div className="shrink-0 border-t border-slate-200 p-3">
+
+        <div className="shrink-0 border-t border-slate-200 p-3 dark:border-slate-800">
           <UserProfile />
-          <Button variant="secondary" className="mt-3 w-full" onClick={handleLogout}>
+
+          <Button
+            variant="secondary"
+            className="mt-3 w-full"
+            onClick={handleLogout}
+          >
             Log out
           </Button>
         </div>

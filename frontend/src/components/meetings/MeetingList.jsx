@@ -1,5 +1,7 @@
 import Button from '../ui/Button.jsx'
+
 import EmptyState from '../ui/EmptyState.jsx'
+
 import MeetingCard from './MeetingCard.jsx'
 
 export default function MeetingList({ meetings, onClearSearch, onEditMeeting, onDeleteMeeting }) {
@@ -21,11 +23,16 @@ export default function MeetingList({ meetings, onClearSearch, onEditMeeting, on
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-slate-500">{label}</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400">{label}</p>
+
       <ul className="space-y-3">
         {meetings.map((meeting) => (
           <li key={meeting.id}>
-            <MeetingCard meeting={meeting} onEdit={onEditMeeting} onDelete={onDeleteMeeting} />
+            <MeetingCard
+              meeting={meeting}
+              onEdit={onEditMeeting}
+              onDelete={onDeleteMeeting}
+            />
           </li>
         ))}
       </ul>

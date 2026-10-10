@@ -16,7 +16,7 @@ from app.routers.meetings import router as meetings_router
 from app.routers.recordings import playback_router, router as recordings_router
 from app.routers.transcripts import router as transcripts_router
 from app.routers.transcriptions import router as transcriptions_router
-
+from app.routers.dashboard import router as dashboard_router
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -31,6 +31,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="MeetNote API", version="0.1.0", lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(meetings_router)
+app.include_router(dashboard_router)
 app.include_router(transcripts_router)
 app.include_router(transcriptions_router)
 app.include_router(action_items_router)
