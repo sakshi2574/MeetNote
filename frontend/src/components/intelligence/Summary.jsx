@@ -150,11 +150,15 @@ export default function Summary({
         </div>
       ) : null}
 
-      {summary || keyPoints.length > 0 ? (
-        <p className="mt-6 text-xs text-slate-400">
-          Extracted from transcript sentences by keyword and phrase rules. No AI model is used.
-        </p>
-      ) : null}
+        {summary || keyPoints.length > 0 ? (
+          <p className="mt-6 text-xs text-slate-400">
+          {intelligence?.method === 'gemini'
+          ? 'Generated using Google Gemini AI.'
+          : intelligence?.method === 'rule-based'
+          ? 'Extracted from transcript sentences by keyword and phrase rules. No AI model is used.'
+          : 'Meeting insights generated from the transcript using an AI model.'}
+          </p>
+        ) : null}
 
       {confirmingReplace ? (
         <ConfirmDialog

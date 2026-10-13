@@ -16,6 +16,7 @@ import threading
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
+from threading import Lock
 
 from app.db.database import SessionLocal
 from app.models.action_item import ActionItem
@@ -28,6 +29,7 @@ from app.services.meeting_extraction import (
     normalize_text,
     extract_meeting_intelligence,
 )
+from app.services.gemini_service import generate_meeting_intelligence
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +40,14 @@ FAILED = "failed"
 
 GENERATED = "ai"
 MANUAL = "manual"
-METHOD = "rule-based"
 
 FAILED_ERROR = "Meeting insights could not be generated."
 RESTART_ERROR = "Insight generation stopped when the server restarted."
 
 _active: set[int] = set()
 _active_lock = threading.Lock()
+_intelligence_methods: dict[int, str] = {}
+_intelligence_methods_lock = Lock()
 
 
 class IntelligenceBusy(Exception):
@@ -102,11 +105,14 @@ def reset_intelligence_state() -> None:
 
 
 def intelligence_snapshot(meeting: Meeting) -> dict:
+    with _intelligence_methods_lock:
+        method = _intelligence_methods.get(meeting.id, "unknown")
+
     return {
         "meeting_id": meeting.id,
         "status": meeting.intelligence_status,
         "error": meeting.intelligence_error,
-        "method": METHOD,
+        "method": method,
         "summary": meeting.summary,
         "summary_source": _summary_source(meeting),
         "key_points": _key_points(meeting.key_points),
@@ -121,20 +127,71 @@ def save_manual_summary(db: Session, meeting: Meeting, summary: str) -> Meeting:
     return meeting
 
 
-def _generate_and_store(db: Session, meeting: Meeting, *, replace_summary: bool) -> None:
+def _generate_and_store(
+    db: Session,
+    meeting: Meeting,
+    *,
+    replace_summary: bool,
+) -> None:
     segments = db.scalars(
         select(TranscriptSegment)
         .where(TranscriptSegment.meeting_id == meeting.id)
-        .order_by(TranscriptSegment.start_time.asc(), TranscriptSegment.id.asc())
+        .order_by(
+            TranscriptSegment.start_time.asc(),
+            TranscriptSegment.id.asc(),
+        )
     ).all()
+
     lines = [
-        TranscriptLine(text=segment.text, start=segment.start_time, speaker=segment.speaker)
+        TranscriptLine(
+            text=segment.text,
+            start=segment.start_time,
+            speaker=segment.speaker,
+        )
         for segment in segments
     ]
-    meeting_date = meeting.meeting_date.date() if meeting.meeting_date else None
-    result = extract_meeting_intelligence(lines, meeting_date)
-    _store(db, meeting, result, replace_summary=replace_summary)
 
+    meeting_date = (
+        meeting.meeting_date.date()
+        if meeting.meeting_date
+        else None
+    )
+
+    try:
+        result, open_questions = generate_meeting_intelligence(
+            lines,
+            meeting_date,
+        )
+        method = "gemini"
+        logger.info(
+            "Gemini generated meeting intelligence for meeting %s",
+            meeting.id,
+        )
+    except Exception:
+        logger.exception(
+            "Gemini failed for meeting %s; using rule-based fallback",
+            meeting.id,
+        )
+        result = extract_meeting_intelligence(lines, meeting_date)
+        open_questions = []
+        method = "rule-based"
+
+    _store(
+        db,
+        meeting,
+        result,
+        replace_summary=replace_summary,
+    )
+
+    with _intelligence_methods_lock:
+        _intelligence_methods[meeting.id] = method
+
+    # Keep the method visible in logs for now.
+    logger.info(
+        "Meeting %s intelligence completed using %s",
+        meeting.id,
+        method,
+    )
 
 def _store(db: Session, meeting: Meeting, result: MeetingIntelligence, *, replace_summary: bool) -> None:
     if replace_summary or _summary_source(meeting) in (None, GENERATED):

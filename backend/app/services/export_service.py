@@ -26,7 +26,7 @@ from app.models.action_item import ActionItem
 from app.models.decision import Decision
 from app.models.meeting import Meeting
 from app.models.transcript_segment import TranscriptSegment
-from app.services.intelligence_service import METHOD, intelligence_snapshot
+from app.services.intelligence_service import intelligence_snapshot
 from app.services.recording_service import resolve_stored_recording
 
 logger = logging.getLogger(__name__)
@@ -136,7 +136,7 @@ def build_export_data(
         data["summary"] = {
             "text": summary or None,
             "source": snapshot["summary_source"] if summary else None,
-            "method": METHOD if summary and snapshot["summary_source"] == "ai" else None,
+            "method": snapshot["method"] if summary and snapshot["summary_source"] == "ai" else None,
             "key_points": snapshot["key_points"],
         }
 
