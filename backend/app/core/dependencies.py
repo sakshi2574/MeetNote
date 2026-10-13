@@ -1,3 +1,4 @@
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -10,7 +11,9 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(
+        bearer_scheme
+    ),
     db: Session = Depends(get_db),
 ) -> User:
     if credentials is None or credentials.scheme.lower() != "bearer":
@@ -19,12 +22,18 @@ def get_current_user(
     try:
         payload = decode_access_token(credentials.credentials)
         user_id = int(payload["sub"])
+
+        if user_id <= 0:
+            raise ValueError("Invalid user ID")
+
     except (ValueError, KeyError, TypeError):
         raise _unauthorized() from None
 
     user = db.get(User, user_id)
+
     if user is None:
         raise _unauthorized()
+
     return user
 
 

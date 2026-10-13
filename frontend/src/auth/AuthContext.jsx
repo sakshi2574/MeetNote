@@ -1,39 +1,67 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
+
 import {
   getCurrentUser,
   login as loginRequest,
   updateCurrentUser,
 } from '../api/auth.js'
+
 import { ACCESS_TOKEN_KEY } from '../api/client.js'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem(ACCESS_TOKEN_KEY))
+  const [token, setToken] = useState(
+    () => localStorage.getItem(ACCESS_TOKEN_KEY),
+  )
+
   const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(() => Boolean(localStorage.getItem(ACCESS_TOKEN_KEY)))
+
+  const [loading, setLoading] = useState(
+    () => Boolean(localStorage.getItem(ACCESS_TOKEN_KEY)),
+  )
 
   useEffect(() => {
     const storedToken = localStorage.getItem(ACCESS_TOKEN_KEY)
-    if (!storedToken) return undefined
+
+    if (!storedToken) {
+      setLoading(false)
+      return undefined
+    }
 
     let cancelled = false
 
-    getCurrentUser()
-      .then((response) => {
-        if (!cancelled) setUser(response.data)
-      })
-      .catch((error) => {
+    async function loadCurrentUser() {
+      try {
+        const response = await getCurrentUser()
+
+        if (!cancelled) {
+          setUser(response.data)
+          setToken(storedToken)
+        }
+      } catch (error) {
         if (cancelled) return
+
         if (error.response?.status === 401) {
           localStorage.removeItem(ACCESS_TOKEN_KEY)
           setToken(null)
           setUser(null)
         }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    loadCurrentUser()
 
     return () => {
       cancelled = true
@@ -42,18 +70,27 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(async (email, password) => {
     const response = await loginRequest(email, password)
-    const accessToken = response.data.access_token
+    const accessToken = response.data?.access_token
+
+    if (!accessToken) {
+      throw new Error('Login response did not contain an access token.')
+    }
+
     localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
     setToken(accessToken)
+    setLoading(true)
 
     try {
       const currentUser = await getCurrentUser()
       setUser(currentUser.data)
+      return currentUser.data
     } catch (error) {
       localStorage.removeItem(ACCESS_TOKEN_KEY)
       setToken(null)
       setUser(null)
       throw error
+    } finally {
+      setLoading(false)
     }
   }, [])
 
@@ -67,6 +104,7 @@ export function AuthProvider({ children }) {
     localStorage.removeItem(ACCESS_TOKEN_KEY)
     setToken(null)
     setUser(null)
+    setLoading(false)
   }, [])
 
   const value = useMemo(
@@ -74,7 +112,7 @@ export function AuthProvider({ children }) {
       token,
       user,
       loading,
-      isAuthenticated: Boolean(user),
+      isAuthenticated: Boolean(user && token),
       login,
       logout,
       updateProfile,
@@ -82,13 +120,19 @@ export function AuthProvider({ children }) {
     [token, user, loading, login, logout, updateProfile],
   )
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  )
 }
 
 export function useAuth() {
   const context = useContext(AuthContext)
+
   if (!context) {
     throw new Error('useAuth must be used within AuthProvider')
   }
+
   return context
 }

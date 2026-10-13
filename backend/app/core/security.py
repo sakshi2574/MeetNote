@@ -1,3 +1,4 @@
+
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -13,23 +14,48 @@ def hash_password(password: str) -> str:
     return password_hash.hash(password)
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
+def verify_password(
+    plain_password: str,
+    hashed_password: str,
+) -> bool:
     return password_hash.verify(plain_password, hashed_password)
 
 
-def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
-    expires_in = expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
+def create_access_token(
+    subject: str,
+    expires_delta: timedelta | None = None,
+) -> str:
+    expires_in = expires_delta or timedelta(
+        minutes=settings.access_token_expire_minutes
+    )
+
     expire = datetime.now(timezone.utc) + expires_in
-    payload = {"sub": subject, "exp": expire}
-    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+
+    payload = {
+        "sub": str(subject),
+        "exp": expire,
+    }
+
+    return jwt.encode(
+        payload,
+        settings.jwt_secret_key,
+        algorithm=settings.jwt_algorithm,
+    )
 
 
 def decode_access_token(token: str) -> dict:
     try:
-        return jwt.decode(
+        payload = jwt.decode(
             token,
             settings.jwt_secret_key,
             algorithms=[settings.jwt_algorithm],
         )
+
+        subject = payload.get("sub")
+        if not isinstance(subject, str) or not subject:
+            raise ValueError("Token subject is missing")
+
+        return payload
+
     except InvalidTokenError as exc:
-        raise ValueError("Invalid token") from exc
+        raise ValueError("Invalid or expired access token") from exc
