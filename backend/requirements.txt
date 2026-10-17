@@ -14,3 +14,6 @@ sherpa-onnx==1.13.8
 fpdf2==2.8.9
 python-docx==1.2.0
 google-genai==2.29.0
+google-auth-oauthlib
+google-api-python-client
+itsdangerous

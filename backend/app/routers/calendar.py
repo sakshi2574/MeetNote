@@ -82,6 +82,7 @@ def make_flow(state=None):
         },
         scopes=SCOPES,
         state=state,
+        autogenerate_code_verifier=True,
     )
 
     flow.redirect_uri = settings.google_redirect_uri
@@ -141,14 +142,18 @@ def google_connect(
 ):
     require_google_config()
 
-    state = state_serializer().dumps(
-        {
-            "user_id": current_user.id,
-            "nonce": secrets.token_urlsafe(24),
-        }
-    )
-
     flow = make_flow()
+
+    # Generate the PKCE verifier before creating the signed state.
+    flow.code_verifier = secrets.token_urlsafe(64)
+
+    state_payload = {
+        "user_id": current_user.id,
+        "nonce": secrets.token_urlsafe(24),
+        "code_verifier": flow.code_verifier,
+    }
+    state = state_serializer().dumps(state_payload)
+
     authorization_url, _ = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
@@ -157,7 +162,6 @@ def google_connect(
     )
 
     return {"authorization_url": authorization_url}
-
 
 @router.get("/google/callback")
 def google_callback(
@@ -184,10 +188,10 @@ def google_callback(
             max_age=STATE_MAX_AGE_SECONDS,
         )
         user_id = int(payload["user_id"])
+        code_verifier = payload["code_verifier"]
 
-        if not payload.get("nonce"):
-            raise BadSignature("Missing nonce")
-
+        if not payload.get("nonce") or not code_verifier:
+            raise BadSignature("Missing OAuth state data")
     except (BadSignature, KeyError, ValueError, TypeError):
         return RedirectResponse(
             f"{frontend}/calendar?google=error&reason=invalid_state"
@@ -202,6 +206,7 @@ def google_callback(
 
     try:
         flow = make_flow(state=state)
+        flow.code_verifier = code_verifier
         flow.fetch_token(code=code)
         credentials = flow.credentials
 
@@ -252,8 +257,12 @@ def google_callback(
             f"{frontend}/calendar?google=connected"
         )
 
-    except Exception:
+    except Exception as exc:
         db.rollback()
+        print(
+            f"Google Calendar OAuth failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
         return RedirectResponse(
             f"{frontend}/calendar?google=error&reason=token_exchange_failed"
         )
@@ -358,14 +367,16 @@ def google_events(
 
         return {"events": events}
 
-    except HttpError:
+    except HttpError as exc:
         db.rollback()
+        print(
+            f"Google Calendar API error: "
+            f"HTTP {exc.resp.status}: "
+            f"{exc.content.decode('utf-8', errors='replace')}"
+        )
         raise HTTPException(
             status_code=502,
-            detail=(
-                "Google Calendar could not retrieve events. "
-                "Try reconnecting."
-            ),
+            detail="Google Calendar could not retrieve events. Try reconnecting.",
         ) from None
 
 
